@@ -362,6 +362,21 @@ def launch_page_html() -> str:
       const shareReasons = (shareBrief.key_reasons || []).map((item) => `<li>${item}</li>`).join('');
       const shareWatchouts = (shareBrief.watchouts || []).map((item) => `<li>${item}</li>`).join('');
       const shareQuestions = (shareBrief.reviewer_questions || []).map((item) => `<li>${item}</li>`).join('');
+      const dealWindowCards = (report.deal_windows || []).map((item) => {
+        const plans = (item.monitoring_plan || []).map((line) => `<li>${line}</li>`).join('');
+        return `
+          <article class="card">
+            <div class="rank">${item.label}</div>
+            <h3>${item.model_name}</h3>
+            <div class="price">${won(item.current_price_krw)}</div>
+            <span class="score">목표가 ${won(item.target_price_krw)}</span>
+            <p><strong>${item.urgency}</strong> · ${item.wait_reason}</p>
+            <p>${item.volatility_risk}</p>
+            <p>${item.buy_trigger}</p>
+            <ul class="list">${plans}</ul>
+          </article>
+        `;
+      }).join('');
       const traces = data.trace_events.map((event) => `
         <div class="${event.status === 'warning' ? 'warn' : ''}">
           <strong>${event.title}</strong><br />
@@ -394,6 +409,10 @@ def launch_page_html() -> str:
             <ul class="list">${shareQuestions}</ul>
             <p>${shareBrief.copy_text || '공개 리포트를 공유해 결제 전 한 번 더 검토받으세요.'}</p>
           </div>
+        </section>
+        <section class="section">
+          <h3>구매 타이밍 윈도우</h3>
+          <div class="grid cards">${dealWindowCards}</div>
         </section>
         <section class="section">
           <h3>대안 시나리오</h3>

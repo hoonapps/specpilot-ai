@@ -274,6 +274,21 @@ class PurchaseStressTest(BaseModel):
     recommendation: str
 
 
+class ProductDealWindow(BaseModel):
+    product_id: str
+    model_name: str
+    status: CheckStatus
+    label: str
+    current_price_krw: int
+    target_price_krw: int
+    fair_price_band_krw: str
+    urgency: str
+    volatility_risk: str
+    wait_reason: str
+    buy_trigger: str
+    monitoring_plan: list[str] = Field(default_factory=list)
+
+
 class ProductEvidencePack(BaseModel):
     product_id: str
     model_name: str
@@ -347,6 +362,7 @@ class PurchaseReport(BaseModel):
     scenario_options: list[ScenarioOption] = Field(default_factory=list)
     criteria_matches: list[ProductCriteriaMatch] = Field(default_factory=list)
     stress_tests: list[PurchaseStressTest] = Field(default_factory=list)
+    deal_windows: list[ProductDealWindow] = Field(default_factory=list)
     evidence_packs: list[ProductEvidencePack] = Field(default_factory=list)
     option_audits: list[ProductOptionAudit] = Field(default_factory=list)
     share_brief: ShareReviewBrief | None = None

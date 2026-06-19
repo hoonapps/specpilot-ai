@@ -22,6 +22,7 @@ from specpilot_ai.core.models import (
     PriceSnapshot,
     ProductCandidate,
     ProductCriteriaMatch,
+    ProductDealWindow,
     ProductEvidencePack,
     ProductOptionAudit,
     PurchaseCriteria,
@@ -435,6 +436,12 @@ def report_writer(state: PurchaseState) -> PurchaseState:
         state["criteria"],
         criteria_matches,
     )
+    deal_windows = _deal_windows(
+        recommendations,
+        price_alerts,
+        purchase_decision,
+        state["criteria"],
+    )
     evidence_packs = _evidence_packs(
         ranked[:5],
         products,
@@ -487,6 +494,7 @@ def report_writer(state: PurchaseState) -> PurchaseState:
         scenario_options=scenario_options,
         criteria_matches=criteria_matches,
         stress_tests=stress_tests,
+        deal_windows=deal_windows,
         evidence_packs=evidence_packs,
         option_audits=option_audits,
         share_brief=share_brief,
@@ -1006,6 +1014,102 @@ def _stress_tests(
     )
 
     return [reduced, expanded, strict_conditions]
+
+
+def _deal_windows(
+    recommendations: list[Recommendation],
+    price_alerts: list[PriceAlertPlan],
+    decision: PurchaseDecision,
+    criteria: PurchaseCriteria,
+) -> list[ProductDealWindow]:
+    alert_by_product = {alert.product_id: alert for alert in price_alerts}
+    budget = criteria.budget_krw
+    windows: list[ProductDealWindow] = []
+
+    for index, recommendation in enumerate(recommendations):
+        product = recommendation.product
+        price = recommendation.price
+        alert = alert_by_product.get(product.id)
+        target_price = (
+            alert.target_price_krw
+            if alert is not None
+            else int(price.effective_price_krw * 0.96)
+        )
+        fair_low = int(price.effective_price_krw * 0.94)
+        fair_high = int(price.effective_price_krw * 1.02)
+        price_gap = price.effective_price_krw - target_price
+        budget_gap = price.effective_price_krw - budget if budget is not None else 0
+        risk_count = len(recommendation.review.risk_signals)
+        limited_stock = price.stock_status == "limited"
+
+        if index == 0 and decision.verdict == "buy_now" and price_gap <= 60_000:
+            status = CheckStatus.ok
+            label = "구매 적기"
+            urgency = "오늘 결제 후보"
+            wait_reason = "목표가와 현재가 차이가 작고 1순위 점수가 유지됩니다."
+            buy_trigger = "최종 결제 금액이 현재 실구매가와 같거나 더 낮으면 진행하세요."
+        elif budget_gap > 0 or price_gap > max(50_000, int(price.effective_price_krw * 0.03)):
+            status = CheckStatus.warning
+            label = "가격 대기"
+            urgency = "목표가 알림 우선"
+            wait_reason = (
+                f"목표가까지 {price_gap:,}원 차이가 있어 즉시 결제 매력이 낮습니다."
+                if price_gap > 0
+                else "입력 예산을 초과해 알림 후 재검토가 필요합니다."
+            )
+            buy_trigger = f"{target_price:,}원 이하 또는 동급 대체 후보가 나오면 다시 비교하세요."
+        elif limited_stock or risk_count:
+            status = CheckStatus.warning
+            label = "조건부 구매"
+            urgency = "재고/옵션 확인 후 결제"
+            wait_reason = "가격은 가능권이지만 재고, 쿠폰, 리뷰 리스크 변동성이 있습니다."
+            buy_trigger = "판매자가 재고와 옵션명을 확인해 주고 최종가가 유지되면 진행하세요."
+        else:
+            status = CheckStatus.ok
+            label = "안정권"
+            urgency = "가격 확인 후 결제 가능"
+            wait_reason = "가격과 조건이 안정권이어서 오래 기다릴 이유가 크지 않습니다."
+            buy_trigger = "최종 결제 화면에서 가격과 옵션명이 일치하면 진행하세요."
+
+        if limited_stock:
+            volatility = "특가/한정 재고라 가격과 재고 변동이 빠릅니다."
+        elif price.coupon_krw or price.card_discount_krw:
+            volatility = "쿠폰/카드 혜택 의존도가 있어 결제 단계에서 가격이 바뀔 수 있습니다."
+        elif price.source_type == "official_store":
+            volatility = "공식 스토어 기준이라 가격 변동은 비교적 낮지만 할인 폭은 제한적입니다."
+        else:
+            volatility = "일반 가격 비교 후보로 재조회 주기 내 변동 가능성이 있습니다."
+
+        monitoring_plan = [
+            (
+                f"{alert.recheck_interval_days if alert else 7}일마다 "
+                f"목표가 {target_price:,}원 도달 여부를 확인하세요."
+            ),
+            "품절, 판매처 변경, 쿠폰 종료 시 비교표를 다시 생성하세요.",
+        ]
+        if budget is not None:
+            monitoring_plan.append(
+                f"입력 예산 {budget:,}원 대비 현재 차이 {budget_gap:,}원을 추적하세요."
+            )
+
+        windows.append(
+            ProductDealWindow(
+                product_id=product.id,
+                model_name=product.model_name,
+                status=status,
+                label=label,
+                current_price_krw=price.effective_price_krw,
+                target_price_krw=target_price,
+                fair_price_band_krw=f"{fair_low:,}원 ~ {fair_high:,}원",
+                urgency=urgency,
+                volatility_risk=volatility,
+                wait_reason=wait_reason,
+                buy_trigger=buy_trigger,
+                monitoring_plan=monitoring_plan,
+            )
+        )
+
+    return windows
 
 
 def _evidence_packs(

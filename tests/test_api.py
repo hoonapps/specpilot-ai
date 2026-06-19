@@ -18,6 +18,7 @@ def test_launch_page_exposes_product_ui() -> None:
     assert "공유용 검토 브리프" in response.text
     assert "구매 판정" in response.text
     assert "대안 시나리오" in response.text
+    assert "구매 타이밍 윈도우" in response.text
     assert "예산/조건 스트레스 테스트" in response.text
     assert "후보별 근거 팩" in response.text
     assert "옵션/사양 검수표" in response.text
@@ -101,6 +102,10 @@ def test_analyze_endpoint_returns_trace_and_alerts() -> None:
     assert payload["report"]["criteria_matches"][0]["coverage_score"] > 0
     assert len(payload["report"]["stress_tests"]) == 3
     assert payload["report"]["stress_tests"][0]["impact"]
+    assert len(payload["report"]["deal_windows"]) == 3
+    assert payload["report"]["deal_windows"][0]["target_price_krw"] > 0
+    assert payload["report"]["deal_windows"][0]["buy_trigger"]
+    assert payload["report"]["deal_windows"][0]["monitoring_plan"]
     assert len(payload["report"]["evidence_packs"]) == 5
     assert payload["report"]["evidence_packs"][0]["price_evidence"]
     assert payload["report"]["evidence_packs"][0]["citation_urls"]
@@ -194,6 +199,7 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
     assert "후보 비교표" in public_page.text
     assert "결제 전 체크리스트" in public_page.text
     assert "대안 시나리오" in public_page.text
+    assert "구매 타이밍 윈도우" in public_page.text
     assert "예산/조건 스트레스 테스트" in public_page.text
     assert "후보별 근거 팩" in public_page.text
     assert "옵션/사양 검수표" in public_page.text

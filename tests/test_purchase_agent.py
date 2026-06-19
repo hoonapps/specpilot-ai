@@ -56,6 +56,12 @@ def test_desktop_pc_analysis_returns_top_three_and_compatibility_notes() -> None
     }
     assert all(item.impact for item in response.report.stress_tests)
     assert all(item.recommendation for item in response.report.stress_tests)
+    assert len(response.report.deal_windows) == 3
+    assert response.report.deal_windows[0].product_id == response.report.final_pick_id
+    assert response.report.deal_windows[0].target_price_krw > 0
+    assert response.report.deal_windows[0].fair_price_band_krw
+    assert response.report.deal_windows[0].monitoring_plan
+    assert response.report.deal_windows[0].buy_trigger
     assert len(response.report.evidence_packs) == 5
     assert response.report.evidence_packs[0].product_id == response.report.final_pick_id
     assert response.report.evidence_packs[0].price_evidence

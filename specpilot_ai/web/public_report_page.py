@@ -46,6 +46,21 @@ def public_report_html(report: PublicReport) -> str:
         """
         for item in purchase.stress_tests
     )
+    deal_window_cards = "\n".join(
+        f"""
+        <article class="card">
+          <span class="rank">{escape(item.label)}</span>
+          <h3>{escape(item.model_name)}</h3>
+          <strong>{_won(item.current_price_krw)}</strong>
+          <small>목표가 {_won(item.target_price_krw)} · {escape(item.status)}</small>
+          <p><strong>{escape(item.urgency)}</strong> · {escape(item.wait_reason)}</p>
+          <p>{escape(item.volatility_risk)}</p>
+          <p>{escape(item.buy_trigger)}</p>
+          <ul>{_list_items(item.monitoring_plan)}</ul>
+        </article>
+        """
+        for item in purchase.deal_windows
+    )
     evidence_cards = "\n".join(
         f"""
         <article class="card">
@@ -258,6 +273,10 @@ def public_report_html(report: PublicReport) -> str:
     <section class="section">
       <h2>대안 시나리오</h2>
       <div class="grid cards">{scenario_cards}</div>
+    </section>
+    <section class="section">
+      <h2>구매 타이밍 윈도우</h2>
+      <div class="grid cards">{deal_window_cards}</div>
     </section>
     <section class="section">
       <h2>예산/조건 스트레스 테스트</h2>
