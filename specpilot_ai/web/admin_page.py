@@ -219,6 +219,7 @@ def admin_page_html() -> str:
         <div class="review-list" id="completion-templates"></div>
         <div class="review-list" id="completion-groups"></div>
         <div class="review-list" id="completion-batches"></div>
+        <div class="review-list" id="completion-engagement"></div>
       </div>
       <div class="panel">
         <h2>알림 발송 채널</h2>
@@ -263,7 +264,8 @@ def admin_page_html() -> str:
         observabilityResponse,
         completionBatchResponse,
         completionTemplateResponse,
-        completionGroupResponse
+        completionGroupResponse,
+        completionEngagementResponse
       ] = await Promise.all([
         fetch('/admin/dashboard'),
         fetch('/ops/quality'),
@@ -285,7 +287,8 @@ def admin_page_html() -> str:
         fetch('/ops/observability/exports'),
         fetch('/reports/completion-batches'),
         fetch('/reports/completion-templates'),
-        fetch('/reports/completion-recipient-groups')
+        fetch('/reports/completion-recipient-groups'),
+        fetch('/reports/completion-engagement')
       ]);
       const data = await response.json();
       const quality = await qualityResponse.json();
@@ -308,6 +311,7 @@ def admin_page_html() -> str:
       const completionBatches = await completionBatchResponse.json();
       const completionTemplates = await completionTemplateResponse.json();
       const completionGroups = await completionGroupResponse.json();
+      const completionEngagement = await completionEngagementResponse.json();
       latestCompletionTemplates = completionTemplates;
       latestCompletionGroups = completionGroups;
       renderMetrics(data.metrics);
@@ -330,6 +334,7 @@ def admin_page_html() -> str:
       renderCompletionTemplates(completionTemplates);
       renderCompletionGroups(completionGroups);
       renderCompletionBatches(completionBatches);
+      renderCompletionEngagement(completionEngagement);
       renderTraces(traces);
       renderObservabilityExports(observabilityExports);
     }
@@ -346,6 +351,10 @@ def admin_page_html() -> str:
         ['발송 시도', metrics.alert_delivery_attempts],
         ['발송 성공', metrics.sent_alert_deliveries],
         ['발송 실패', metrics.failed_alert_deliveries],
+        ['완료 batch', metrics.completion_report_batches],
+        ['완료 발송', metrics.completion_report_deliveries],
+        ['완료 열람', metrics.completion_delivery_opens],
+        ['완료 클릭', metrics.completion_delivery_clicks],
         ['URL 모니터', metrics.source_monitors],
         ['소스 refresh', metrics.source_refresh_runs],
         ['refresh 실패', metrics.source_refresh_failures],
@@ -735,7 +744,7 @@ def admin_page_html() -> str:
         const tone = item.status === 'failed' ? 'danger' : item.status === 'partial' ? 'warn' : '';
         const deliveries = item.deliveries.length
           ? item.deliveries.map((delivery) => `
-            <li>${delivery.report_id} · ${delivery.channel} · ${delivery.status} · ${delivery.target_masked}</li>
+            <li>${delivery.report_id} · ${delivery.channel} · ${delivery.status} · ${delivery.target_masked} · 열람 ${delivery.open_count || 0} / 클릭 ${delivery.click_count || 0}</li>
           `).join('')
           : '<li>개별 발송 기록 없음</li>';
         return `
@@ -760,6 +769,21 @@ def admin_page_html() -> str:
           <span class="kicker">${item.channel} · ${item.enabled ? '활성' : '비활성'}</span>
           <h3>${item.name}</h3>
           <p>${item.subject}</p>
+        </article>
+      `).join('');
+    }
+
+    function renderCompletionEngagement(items) {
+      const root = document.querySelector('#completion-engagement');
+      if (!items.length) {
+        root.innerHTML = '<p>아직 완료 리포트 열람/클릭 이벤트가 없습니다.</p>';
+        return;
+      }
+      root.innerHTML = items.map((item) => `
+        <article class="review-item">
+          <span class="kicker">${item.event_type} · ${new Date(item.created_at).toLocaleString()}</span>
+          <h3>${item.target_masked} · ${item.report_id}</h3>
+          <p>delivery: ${item.delivery_id} / batch: ${item.batch_id}</p>
         </article>
       `).join('');
     }

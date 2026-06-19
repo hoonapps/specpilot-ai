@@ -78,6 +78,7 @@ def test_admin_page_exposes_review_console() -> None:
     assert "템플릿 저장" in response.text
     assert "수신자 그룹 저장" in response.text
     assert "완료 리포트 발송" in response.text
+    assert "열람/클릭 이벤트" in response.text
     assert "품질/비용 감사" in response.text
     assert "품질 회귀 모니터" in response.text
     assert "사용자 피드백" in response.text
@@ -392,6 +393,24 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
     assert completion_groups.status_code == 200
     assert any(item["group_id"] == group_payload["group_id"] for item in completion_groups.json())
 
+    completion_preview = client.post(
+        "/reports/completion-preview",
+        headers=WORKSPACE_A,
+        json={
+            "report_id": saved_payload["report_id"],
+            "template_id": template_payload["template_id"],
+            "recipient_group_id": group_payload["group_id"],
+            "respect_unsubscribe": True,
+        },
+    )
+    assert completion_preview.status_code == 200
+    preview_payload = completion_preview.json()
+    assert preview_payload["subject"] == "[SpecPilot] 테스트 구매 리포트"
+    assert preview_payload["target_count"] == 1
+    assert preview_payload["excluded_count"] == 1
+    assert preview_payload["targets_masked"] == ["op***@example.com"]
+    assert preview_payload["excluded_targets_masked"] == ["bl***@example.com"]
+
     templated_batch = client.post(
         "/reports/completion-batches",
         headers=WORKSPACE_A,
@@ -414,6 +433,53 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
         delivery["subject"] == "[SpecPilot] 테스트 구매 리포트"
         for delivery in templated_payload["deliveries"]
     )
+    sent_delivery = next(
+        delivery
+        for delivery in templated_payload["deliveries"]
+        if delivery["status"] == "sent"
+    )
+
+    opened = client.post(
+        f"/reports/completion-deliveries/{sent_delivery['delivery_id']}/engagement",
+        headers=WORKSPACE_A,
+        json={"event_type": "opened", "metadata": {"user_agent": "pytest"}},
+    )
+    assert opened.status_code == 200
+    assert opened.json()["event_type"] == "open"
+    assert opened.json()["target_masked"] == "op***@example.com"
+
+    clicked = client.post(
+        f"/reports/completion-deliveries/{sent_delivery['delivery_id']}/engagement",
+        headers=WORKSPACE_A,
+        json={"event_type": "clicked", "metadata": {"href": "/r/share_test"}},
+    )
+    assert clicked.status_code == 200
+    assert clicked.json()["event_type"] == "click"
+
+    completion_engagement = client.get("/reports/completion-engagement", headers=WORKSPACE_A)
+    assert completion_engagement.status_code == 200
+    assert {item["event_type"] for item in completion_engagement.json()} >= {"open", "click"}
+
+    completion_batches_with_engagement = client.get(
+        "/reports/completion-batches",
+        headers=WORKSPACE_A,
+    )
+    sent_delivery_after_engagement = next(
+        delivery
+        for batch_item in completion_batches_with_engagement.json()
+        if batch_item["batch_id"] == templated_payload["batch_id"]
+        for delivery in batch_item["deliveries"]
+        if delivery["delivery_id"] == sent_delivery["delivery_id"]
+    )
+    assert sent_delivery_after_engagement["open_count"] == 1
+    assert sent_delivery_after_engagement["click_count"] == 1
+    assert sent_delivery_after_engagement["engagement_count"] == 2
+
+    metrics_after_completion = client.get("/ops/metrics", headers=WORKSPACE_A).json()
+    assert metrics_after_completion["completion_report_batches"] >= 2
+    assert metrics_after_completion["completion_report_deliveries"] >= 3
+    assert metrics_after_completion["completion_delivery_opens"] >= 1
+    assert metrics_after_completion["completion_delivery_clicks"] >= 1
 
     isolated_completion_batch = client.post(
         "/reports/completion-batches",
@@ -440,6 +506,24 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
         item["group_id"] != group_payload["group_id"]
         for item in isolated_completion_groups.json()
     )
+
+    blocked_completion_preview = client.post(
+        "/reports/completion-preview",
+        headers=WORKSPACE_B,
+        json={
+            "report_id": saved_payload["report_id"],
+            "template_id": template_payload["template_id"],
+            "recipient_group_id": group_payload["group_id"],
+        },
+    )
+    assert blocked_completion_preview.status_code == 404
+
+    blocked_engagement = client.post(
+        f"/reports/completion-deliveries/{sent_delivery['delivery_id']}/engagement",
+        headers=WORKSPACE_B,
+        json={"event_type": "open"},
+    )
+    assert blocked_engagement.status_code == 404
 
     revoked_share = client.delete(
         f"/reports/{saved_payload['report_id']}/share",

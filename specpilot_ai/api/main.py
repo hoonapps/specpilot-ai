@@ -32,10 +32,14 @@ from specpilot_ai.core.models import (
     BetaLeadRequest,
     BetaReadinessDashboard,
     Category,
+    CompletionDeliveryEngagement,
+    CompletionDeliveryEngagementRequest,
     CompletionRecipientGroup,
     CompletionRecipientGroupRequest,
     CompletionReportBatch,
     CompletionReportBatchRequest,
+    CompletionReportPreview,
+    CompletionReportPreviewRequest,
     CompletionReportTemplate,
     CompletionReportTemplateRequest,
     FeedbackRecord,
@@ -362,6 +366,20 @@ def list_completion_recipient_groups(
     )
 
 
+@app.post("/reports/completion-preview", response_model=CompletionReportPreview)
+def preview_completion_report(
+    request: CompletionReportPreviewRequest,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> CompletionReportPreview:
+    preview = _store().preview_completion_report_for_workspace(
+        workspace.workspace_id,
+        request,
+    )
+    if preview is None:
+        raise HTTPException(status_code=404, detail="미리보기할 저장 리포트를 찾을 수 없습니다.")
+    return preview
+
+
 @app.post("/reports/completion-batches", response_model=CompletionReportBatch)
 def create_completion_report_batch(
     request: CompletionReportBatchRequest,
@@ -379,6 +397,42 @@ def list_completion_report_batches(
     workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
 ) -> list[CompletionReportBatch]:
     return _store().list_completion_report_batches_for_workspace(
+        workspace.workspace_id,
+        limit=limit,
+    )
+
+
+@app.post(
+    "/reports/completion-deliveries/{delivery_id}/engagement",
+    response_model=CompletionDeliveryEngagement,
+)
+def record_completion_delivery_engagement(
+    delivery_id: str,
+    request: CompletionDeliveryEngagementRequest,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> CompletionDeliveryEngagement:
+    engagement = _store().record_completion_delivery_engagement_for_workspace(
+        workspace.workspace_id,
+        delivery_id,
+        request,
+    )
+    if engagement is None:
+        raise HTTPException(
+            status_code=404,
+            detail="engagement를 기록할 delivery를 찾을 수 없습니다.",
+        )
+    return engagement
+
+
+@app.get(
+    "/reports/completion-engagement",
+    response_model=list[CompletionDeliveryEngagement],
+)
+def list_completion_delivery_engagement(
+    limit: int = 50,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> list[CompletionDeliveryEngagement]:
+    return _store().list_completion_delivery_engagement_for_workspace(
         workspace.workspace_id,
         limit=limit,
     )

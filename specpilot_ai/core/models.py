@@ -730,6 +730,31 @@ class CompletionReportBatchRequest(BaseModel):
     note: str = ""
 
 
+class CompletionReportPreviewRequest(BaseModel):
+    report_id: str
+    channel: str = "email"
+    target: str = "ops@example.com"
+    template_id: str | None = None
+    recipient_group_id: str | None = None
+    respect_unsubscribe: bool = True
+
+
+class CompletionReportPreview(BaseModel):
+    workspace_id: str = "demo"
+    report_id: str
+    template_id: str | None = None
+    recipient_group_id: str | None = None
+    channel: str
+    subject: str
+    body: str
+    targets_masked: list[str] = Field(default_factory=list)
+    excluded_targets_masked: list[str] = Field(default_factory=list)
+    target_count: int = 0
+    excluded_count: int = 0
+    public_path: str = "비공개 리포트"
+    preview_generated_at: str
+
+
 class CompletionReportTemplateRequest(BaseModel):
     name: str
     channel: str = "email"
@@ -795,6 +820,27 @@ class CompletionReportDelivery(BaseModel):
     retry_count: int = 0
     next_retry_at: str | None = None
     sent_at: str | None = None
+    engagement_count: int = 0
+    open_count: int = 0
+    click_count: int = 0
+    last_engaged_at: str | None = None
+    created_at: str
+
+
+class CompletionDeliveryEngagementRequest(BaseModel):
+    event_type: str = "open"
+    metadata: dict = Field(default_factory=dict)
+
+
+class CompletionDeliveryEngagement(BaseModel):
+    event_id: str
+    delivery_id: str
+    batch_id: str
+    report_id: str
+    workspace_id: str = "demo"
+    event_type: str
+    target_masked: str = ""
+    metadata: dict = Field(default_factory=dict)
     created_at: str
 
 
@@ -948,6 +994,10 @@ class OperationsMetrics(BaseModel):
     alert_delivery_attempts: int = 0
     sent_alert_deliveries: int = 0
     failed_alert_deliveries: int = 0
+    completion_report_batches: int = 0
+    completion_report_deliveries: int = 0
+    completion_delivery_opens: int = 0
+    completion_delivery_clicks: int = 0
     source_monitors: int = 0
     source_refresh_runs: int = 0
     source_refresh_failures: int = 0

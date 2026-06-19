@@ -30,11 +30,15 @@ from specpilot_ai.core.models import (
     BetaReadinessDashboard,
     Category,
     CheckStatus,
+    CompletionDeliveryEngagement,
+    CompletionDeliveryEngagementRequest,
     CompletionRecipientGroup,
     CompletionRecipientGroupRequest,
     CompletionReportBatch,
     CompletionReportBatchRequest,
     CompletionReportDelivery,
+    CompletionReportPreview,
+    CompletionReportPreviewRequest,
     CompletionReportTemplate,
     CompletionReportTemplateRequest,
     FeedbackRecord,
@@ -425,6 +429,51 @@ class SpecPilotStore:
             ).fetchall()
         return [_completion_recipient_group_from_row(row) for row in rows]
 
+    def preview_completion_report_for_workspace(
+        self,
+        workspace_id: str,
+        request: CompletionReportPreviewRequest,
+    ) -> CompletionReportPreview | None:
+        reports = self._select_completion_reports(
+            workspace_id,
+            report_ids=[request.report_id],
+            limit=1,
+        )
+        if not reports:
+            return None
+        report = reports[0]
+        template = self._completion_template(workspace_id, request.template_id)
+        group = self._completion_recipient_group(workspace_id, request.recipient_group_id)
+        channel = _completion_channel(request.channel, template=template, group=group)
+        subject = _render_completion_text(_completion_subject(template), report)
+        body = _render_completion_text(_completion_body(template), report)
+        targets = _completion_targets(request, group)
+        eligible = [
+            target
+            for target, is_unsubscribed in targets
+            if not (is_unsubscribed and request.respect_unsubscribe)
+        ]
+        excluded = [
+            target
+            for target, is_unsubscribed in targets
+            if is_unsubscribed and request.respect_unsubscribe
+        ]
+        return CompletionReportPreview(
+            workspace_id=workspace_id,
+            report_id=report.report_id,
+            template_id=template["template_id"] if template else None,
+            recipient_group_id=group["group_id"] if group else None,
+            channel=channel,
+            subject=subject,
+            body=body,
+            targets_masked=[_mask_target(target) for target in eligible],
+            excluded_targets_masked=[_mask_target(target) for target in excluded],
+            target_count=len(eligible),
+            excluded_count=len(excluded),
+            public_path=f"/r/{report.share_token}" if report.share_token else "비공개 리포트",
+            preview_generated_at=_now(),
+        )
+
     def create_completion_report_batch_for_workspace(
         self,
         workspace_id: str,
@@ -582,10 +631,17 @@ class SpecPilotStore:
             for batch in batches:
                 delivery_rows = conn.execute(
                     """
-                    SELECT *
-                    FROM completion_report_deliveries
-                    WHERE batch_id = ? AND workspace_id = ?
-                    ORDER BY created_at ASC
+                    SELECT d.*,
+                           COUNT(e.event_id) AS engagement_count,
+                           SUM(CASE WHEN e.event_type = 'open' THEN 1 ELSE 0 END) AS open_count,
+                           SUM(CASE WHEN e.event_type = 'click' THEN 1 ELSE 0 END) AS click_count,
+                           MAX(e.created_at) AS last_engaged_at
+                    FROM completion_report_deliveries d
+                    LEFT JOIN completion_delivery_engagement e
+                        ON e.delivery_id = d.delivery_id AND e.workspace_id = d.workspace_id
+                    WHERE d.batch_id = ? AND d.workspace_id = ?
+                    GROUP BY d.delivery_id
+                    ORDER BY d.created_at ASC
                     """,
                     (batch.batch_id, workspace_id),
                 ).fetchall()
@@ -593,6 +649,76 @@ class SpecPilotStore:
                     _completion_delivery_from_row(row) for row in delivery_rows
                 ]
         return batches
+
+    def record_completion_delivery_engagement_for_workspace(
+        self,
+        workspace_id: str,
+        delivery_id: str,
+        request: CompletionDeliveryEngagementRequest,
+    ) -> CompletionDeliveryEngagement | None:
+        now = _now()
+        event_type = _completion_engagement_type(request.event_type)
+        with self._connect() as conn:
+            delivery = conn.execute(
+                """
+                SELECT *
+                FROM completion_report_deliveries
+                WHERE workspace_id = ? AND delivery_id = ?
+                """,
+                (workspace_id, delivery_id),
+            ).fetchone()
+            if delivery is None:
+                return None
+            event = CompletionDeliveryEngagement(
+                event_id=f"engage_{uuid4().hex[:12]}",
+                delivery_id=delivery["delivery_id"],
+                batch_id=delivery["batch_id"],
+                report_id=delivery["report_id"],
+                workspace_id=workspace_id,
+                event_type=event_type,
+                target_masked=delivery["target_masked"],
+                metadata=request.metadata,
+                created_at=now,
+            )
+            conn.execute(
+                """
+                INSERT INTO completion_delivery_engagement (
+                    event_id, delivery_id, batch_id, report_id, workspace_id,
+                    event_type, target_masked, metadata_json, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event.event_id,
+                    event.delivery_id,
+                    event.batch_id,
+                    event.report_id,
+                    event.workspace_id,
+                    event.event_type,
+                    event.target_masked,
+                    json.dumps(event.metadata, ensure_ascii=False),
+                    event.created_at,
+                ),
+            )
+        return event
+
+    def list_completion_delivery_engagement_for_workspace(
+        self,
+        workspace_id: str,
+        limit: int = 50,
+    ) -> list[CompletionDeliveryEngagement]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM completion_delivery_engagement
+                WHERE workspace_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (workspace_id, limit),
+            ).fetchall()
+        return [_completion_engagement_from_row(row) for row in rows]
 
     def get_report(self, report_id: str) -> SavedReportDetail | None:
         return self.get_report_for_workspace("demo", report_id)
@@ -2466,6 +2592,30 @@ class SpecPilotStore:
                 """,
                 params,
             ).fetchone()[0]
+            completion_report_batches = conn.execute(
+                f"SELECT COUNT(*) FROM completion_report_batches{where}",
+                params,
+            ).fetchone()[0]
+            completion_report_deliveries = conn.execute(
+                f"SELECT COUNT(*) FROM completion_report_deliveries{where}",
+                params,
+            ).fetchone()[0]
+            completion_delivery_opens = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM completion_delivery_engagement{where}
+                {' AND ' if where else ' WHERE '}event_type = 'open'
+                """,
+                params,
+            ).fetchone()[0]
+            completion_delivery_clicks = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM completion_delivery_engagement{where}
+                {' AND ' if where else ' WHERE '}event_type = 'click'
+                """,
+                params,
+            ).fetchone()[0]
             triggered_alerts = conn.execute(
                 f"""
                 SELECT COUNT(*)
@@ -2521,6 +2671,10 @@ class SpecPilotStore:
             alert_delivery_attempts=alert_delivery_attempts,
             sent_alert_deliveries=sent_alert_deliveries,
             failed_alert_deliveries=failed_alert_deliveries,
+            completion_report_batches=completion_report_batches,
+            completion_report_deliveries=completion_report_deliveries,
+            completion_delivery_opens=completion_delivery_opens,
+            completion_delivery_clicks=completion_delivery_clicks,
             source_monitors=source_monitors,
             source_refresh_runs=source_refresh_runs,
             source_refresh_failures=source_refresh_failures,
@@ -2858,6 +3012,19 @@ class SpecPilotStore:
                     FOREIGN KEY(report_id) REFERENCES saved_reports(report_id)
                 );
 
+                CREATE TABLE IF NOT EXISTS completion_delivery_engagement (
+                    event_id TEXT PRIMARY KEY,
+                    delivery_id TEXT NOT NULL,
+                    batch_id TEXT NOT NULL,
+                    report_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL DEFAULT 'demo',
+                    event_type TEXT NOT NULL,
+                    target_masked TEXT NOT NULL DEFAULT '',
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(delivery_id) REFERENCES completion_report_deliveries(delivery_id)
+                );
+
                 CREATE TABLE IF NOT EXISTS trace_spans (
                     span_id TEXT PRIMARY KEY,
                     trace_id TEXT NOT NULL,
@@ -2979,6 +3146,10 @@ class SpecPilotStore:
                     ON completion_report_deliveries(workspace_id, created_at);
                 CREATE INDEX IF NOT EXISTS idx_completion_deliveries_report
                     ON completion_report_deliveries(report_id);
+                CREATE INDEX IF NOT EXISTS idx_completion_engagement_workspace
+                    ON completion_delivery_engagement(workspace_id, created_at);
+                CREATE INDEX IF NOT EXISTS idx_completion_engagement_delivery
+                    ON completion_delivery_engagement(delivery_id, event_type);
                 CREATE INDEX IF NOT EXISTS idx_trace_spans_workspace
                     ON trace_spans(workspace_id, trace_id);
                 CREATE INDEX IF NOT EXISTS idx_observability_exports_workspace
@@ -3557,6 +3728,25 @@ def _completion_delivery_from_row(row: sqlite3.Row) -> CompletionReportDelivery:
         retry_count=data["retry_count"],
         next_retry_at=data["next_retry_at"],
         sent_at=data["sent_at"],
+        engagement_count=int(data.get("engagement_count") or 0),
+        open_count=int(data.get("open_count") or 0),
+        click_count=int(data.get("click_count") or 0),
+        last_engaged_at=data.get("last_engaged_at"),
+        created_at=data["created_at"],
+    )
+
+
+def _completion_engagement_from_row(row: sqlite3.Row) -> CompletionDeliveryEngagement:
+    data = dict(row)
+    return CompletionDeliveryEngagement(
+        event_id=data["event_id"],
+        delivery_id=data["delivery_id"],
+        batch_id=data["batch_id"],
+        report_id=data["report_id"],
+        workspace_id=data["workspace_id"],
+        event_type=data["event_type"],
+        target_masked=data["target_masked"],
+        metadata=json.loads(data["metadata_json"]),
         created_at=data["created_at"],
     )
 
@@ -4216,8 +4406,19 @@ def _completion_subject(template: sqlite3.Row | None) -> str:
     return str(template["subject"]).strip() or "SpecPilot AI 구매 리포트"
 
 
+def _completion_body(template: sqlite3.Row | None) -> str:
+    if template is None:
+        return (
+            "{title}\n"
+            "추천 1순위: {top_model_name}\n"
+            "공개 리포트: {public_path}\n"
+            "결제 전 옵션명, 배송비, 카드 혜택을 다시 확인해 주세요."
+        )
+    return str(template["body"]).strip() or "완료 리포트를 확인해 주세요: {public_path}"
+
+
 def _completion_targets(
-    request: CompletionReportBatchRequest,
+    request: CompletionReportBatchRequest | CompletionReportPreviewRequest,
     group: sqlite3.Row | None,
 ) -> list[tuple[str, bool]]:
     if group is None:
@@ -4244,6 +4445,19 @@ def _render_completion_text(template: str, report: SavedReportSummary) -> str:
     for key, value in values.items():
         rendered = rendered.replace("{" + key + "}", value)
     return rendered
+
+
+def _completion_engagement_type(event_type: str) -> str:
+    normalized = event_type.strip().lower()
+    if normalized in {"open", "opened"}:
+        return "open"
+    if normalized in {"click", "clicked"}:
+        return "click"
+    if normalized in {"share", "shared"}:
+        return "share"
+    if normalized in {"reply", "replied"}:
+        return "reply"
+    return "custom"
 
 
 def _completion_dispatch_status(
