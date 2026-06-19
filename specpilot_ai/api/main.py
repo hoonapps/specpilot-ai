@@ -1,17 +1,24 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
 from specpilot_ai.core.config import get_settings
 from specpilot_ai.core.models import (
+    AlertSubscription,
+    AlertSubscriptionRequest,
     AnalyzeRequest,
     AnalyzeResponse,
     Category,
+    OperationsMetrics,
     PriceAlertPlan,
     ProductBrief,
+    SavedReportDetail,
+    SavedReportSummary,
+    SaveReportRequest,
     TraceEvent,
 )
 from specpilot_ai.graph.neo4j_client import Neo4jRepository
 from specpilot_ai.graph.product_graph import pc_purchase_graph_schema
+from specpilot_ai.storage.sqlite_store import SpecPilotStore
 from specpilot_ai.web.launch_page import launch_page_html
 from specpilot_ai.workflows.purchase_agent import run_analysis
 
@@ -22,6 +29,10 @@ app = FastAPI(
 )
 
 _TRACE_CACHE: dict[str, AnalyzeResponse] = {}
+
+
+def _store() -> SpecPilotStore:
+    return SpecPilotStore(get_settings())
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -41,6 +52,7 @@ def health() -> dict[str, str | bool]:
         "status": "ok",
         "demo_mode": settings.demo_mode,
         "neo4j_ready": neo4j_ready,
+        "storage_ready": True,
     }
 
 
@@ -127,6 +139,7 @@ def graph_schema() -> dict[str, object]:
 def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     response = run_analysis(request)
     _TRACE_CACHE[response.graph_trace_id] = response
+    _store().save_analysis(response)
     return response
 
 
@@ -134,6 +147,7 @@ def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
 def price_alert_preview(request: AnalyzeRequest) -> list[PriceAlertPlan]:
     response = run_analysis(request)
     _TRACE_CACHE[response.graph_trace_id] = response
+    _store().save_analysis(response)
     return response.report.price_alerts
 
 
@@ -141,5 +155,69 @@ def price_alert_preview(request: AnalyzeRequest) -> list[PriceAlertPlan]:
 def trace_events(trace_id: str) -> list[TraceEvent]:
     response = _TRACE_CACHE.get(trace_id)
     if response is None:
-        return []
+        response = _store().get_analysis(trace_id)
+    if response is None:
+        raise HTTPException(status_code=404, detail="trace_id를 찾을 수 없습니다.")
     return response.trace_events
+
+
+@app.post("/reports/save", response_model=SavedReportSummary)
+def save_report(request: SaveReportRequest) -> SavedReportSummary:
+    response = _TRACE_CACHE.get(request.trace_id) or _store().get_analysis(request.trace_id)
+    if response is None:
+        raise HTTPException(status_code=404, detail="저장할 분석 결과를 찾을 수 없습니다.")
+    title = request.title or _default_report_title(response)
+    return _store().save_report(
+        response,
+        title=title,
+        owner_label=request.owner_label,
+        notes=request.notes,
+    )
+
+
+@app.get("/reports", response_model=list[SavedReportSummary])
+def list_reports(limit: int = 20) -> list[SavedReportSummary]:
+    return _store().list_reports(limit=limit)
+
+
+@app.get("/reports/{report_id}", response_model=SavedReportDetail)
+def get_report(report_id: str) -> SavedReportDetail:
+    report = _store().get_report(report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="저장 리포트를 찾을 수 없습니다.")
+    return report
+
+
+@app.post("/alerts/subscribe", response_model=AlertSubscription)
+def subscribe_alert(request: AlertSubscriptionRequest) -> AlertSubscription:
+    response = _TRACE_CACHE.get(request.trace_id) or _store().get_analysis(request.trace_id)
+    if response is None:
+        raise HTTPException(status_code=404, detail="알림을 연결할 분석 결과를 찾을 수 없습니다.")
+    try:
+        return _store().create_alert_subscription(
+            response,
+            product_id=request.product_id,
+            target_price_krw=request.target_price_krw,
+            channels=request.channels,
+            contact=request.contact,
+            owner_label=request.owner_label,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/alerts/subscriptions", response_model=list[AlertSubscription])
+def list_alert_subscriptions(limit: int = 50) -> list[AlertSubscription]:
+    return _store().list_alert_subscriptions(limit=limit)
+
+
+@app.get("/ops/metrics", response_model=OperationsMetrics)
+def operations_metrics() -> OperationsMetrics:
+    return _store().metrics()
+
+
+def _default_report_title(response: AnalyzeResponse) -> str:
+    top = response.report.top_recommendations[0] if response.report.top_recommendations else None
+    if top is None:
+        return f"{response.criteria.category.value} 구매 분석"
+    return f"{top.product.model_name} 중심 구매 리포트"
