@@ -847,6 +847,29 @@ class CompletionDeliveryEngagement(BaseModel):
     created_at: str
 
 
+class CompletionDeliveryProviderWebhookRequest(BaseModel):
+    tracking_token: str = ""
+    delivery_id: str | None = None
+    provider_name: str = "email_provider"
+    event_type: str = "delivered"
+    provider_message: str = ""
+    metadata: dict = Field(default_factory=dict)
+
+
+class CompletionDeliveryProviderEvent(BaseModel):
+    provider_event_id: str
+    delivery_id: str
+    batch_id: str
+    report_id: str
+    workspace_id: str = "demo"
+    provider_name: str
+    event_type: str
+    delivery_status: str
+    provider_message: str = ""
+    metadata: dict = Field(default_factory=dict)
+    created_at: str
+
+
 class CompletionReportBatch(BaseModel):
     batch_id: str
     workspace_id: str = "demo"
@@ -1001,6 +1024,9 @@ class OperationsMetrics(BaseModel):
     completion_report_deliveries: int = 0
     completion_delivery_opens: int = 0
     completion_delivery_clicks: int = 0
+    completion_delivery_bounces: int = 0
+    completion_delivery_complaints: int = 0
+    completion_delivery_suppressions: int = 0
     source_monitors: int = 0
     source_refresh_runs: int = 0
     source_refresh_failures: int = 0

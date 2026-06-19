@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
 from specpilot_ai.api.auth import workspace_context
@@ -34,6 +34,8 @@ from specpilot_ai.core.models import (
     Category,
     CompletionDeliveryEngagement,
     CompletionDeliveryEngagementRequest,
+    CompletionDeliveryProviderEvent,
+    CompletionDeliveryProviderWebhookRequest,
     CompletionRecipientGroup,
     CompletionRecipientGroupRequest,
     CompletionReportBatch,
@@ -439,6 +441,42 @@ def list_completion_delivery_engagement(
     workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
 ) -> list[CompletionDeliveryEngagement]:
     return _store().list_completion_delivery_engagement_for_workspace(
+        workspace.workspace_id,
+        limit=limit,
+    )
+
+
+@app.post(
+    "/reports/completion-deliveries/provider-webhooks",
+    response_model=CompletionDeliveryProviderEvent,
+)
+def record_completion_delivery_provider_webhook(
+    request: CompletionDeliveryProviderWebhookRequest,
+    x_specpilot_webhook_secret: str | None = Header(default=None),
+) -> CompletionDeliveryProviderEvent:
+    if x_specpilot_webhook_secret != get_settings().completion_webhook_secret:
+        raise HTTPException(
+            status_code=401,
+            detail="completion webhook secret이 올바르지 않습니다.",
+        )
+    event = _store().record_completion_delivery_provider_event(request)
+    if event is None:
+        raise HTTPException(
+            status_code=404,
+            detail="webhook을 연결할 completion delivery가 없습니다.",
+        )
+    return event
+
+
+@app.get(
+    "/reports/completion-provider-events",
+    response_model=list[CompletionDeliveryProviderEvent],
+)
+def list_completion_delivery_provider_events(
+    limit: int = 50,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> list[CompletionDeliveryProviderEvent]:
+    return _store().list_completion_delivery_provider_events_for_workspace(
         workspace.workspace_id,
         limit=limit,
     )

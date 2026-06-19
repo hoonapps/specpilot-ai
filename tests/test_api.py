@@ -80,6 +80,7 @@ def test_admin_page_exposes_review_console() -> None:
     assert "완료 리포트 발송" in response.text
     assert "열람/클릭 이벤트" in response.text
     assert "tracking_pixel_path" in response.text
+    assert "provider webhook 이벤트" in response.text
     assert "품질/비용 감사" in response.text
     assert "품질 회귀 모니터" in response.text
     assert "사용자 피드백" in response.text
@@ -484,6 +485,46 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
     assert unsafe_redirect.status_code == 302
     assert unsafe_redirect.headers["location"] == "/"
 
+    rejected_webhook = client.post(
+        "/reports/completion-deliveries/provider-webhooks",
+        json={
+            "tracking_token": sent_delivery["tracking_token"],
+            "provider_name": "pytest-mailer",
+            "event_type": "bounced",
+        },
+    )
+    assert rejected_webhook.status_code == 401
+
+    bounced_webhook = client.post(
+        "/reports/completion-deliveries/provider-webhooks",
+        headers={"X-SpecPilot-Webhook-Secret": "specpilot-webhook-secret"},
+        json={
+            "tracking_token": sent_delivery["tracking_token"],
+            "provider_name": "pytest-mailer",
+            "event_type": "hard_bounce",
+            "provider_message": "mailbox unavailable",
+            "metadata": {"smtp_code": "550"},
+        },
+    )
+    assert bounced_webhook.status_code == 200
+    assert bounced_webhook.json()["event_type"] == "bounced"
+    assert bounced_webhook.json()["delivery_status"] == "failed"
+
+    provider_events = client.get("/reports/completion-provider-events", headers=WORKSPACE_A)
+    assert provider_events.status_code == 200
+    assert any(
+        item["provider_event_id"] == bounced_webhook.json()["provider_event_id"]
+        for item in provider_events.json()
+    )
+    isolated_provider_events = client.get(
+        "/reports/completion-provider-events",
+        headers=WORKSPACE_B,
+    )
+    assert all(
+        item["provider_event_id"] != bounced_webhook.json()["provider_event_id"]
+        for item in isolated_provider_events.json()
+    )
+
     completion_engagement = client.get("/reports/completion-engagement", headers=WORKSPACE_A)
     assert completion_engagement.status_code == 200
     assert {item["event_type"] for item in completion_engagement.json()} >= {"open", "click"}
@@ -502,12 +543,17 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
     assert sent_delivery_after_engagement["open_count"] == 2
     assert sent_delivery_after_engagement["click_count"] == 3
     assert sent_delivery_after_engagement["engagement_count"] == 5
+    assert sent_delivery_after_engagement["status"] == "failed"
+    assert "provider_webhook=pytest-mailer:bounced" in sent_delivery_after_engagement[
+        "provider_message"
+    ]
 
     metrics_after_completion = client.get("/ops/metrics", headers=WORKSPACE_A).json()
     assert metrics_after_completion["completion_report_batches"] >= 2
     assert metrics_after_completion["completion_report_deliveries"] >= 3
     assert metrics_after_completion["completion_delivery_opens"] >= 2
     assert metrics_after_completion["completion_delivery_clicks"] >= 3
+    assert metrics_after_completion["completion_delivery_bounces"] >= 1
 
     isolated_completion_batch = client.post(
         "/reports/completion-batches",

@@ -220,6 +220,7 @@ def admin_page_html() -> str:
         <div class="review-list" id="completion-groups"></div>
         <div class="review-list" id="completion-batches"></div>
         <div class="review-list" id="completion-engagement"></div>
+        <div class="review-list" id="completion-provider-events"></div>
       </div>
       <div class="panel">
         <h2>알림 발송 채널</h2>
@@ -265,7 +266,8 @@ def admin_page_html() -> str:
         completionBatchResponse,
         completionTemplateResponse,
         completionGroupResponse,
-        completionEngagementResponse
+        completionEngagementResponse,
+        completionProviderEventResponse
       ] = await Promise.all([
         fetch('/admin/dashboard'),
         fetch('/ops/quality'),
@@ -288,7 +290,8 @@ def admin_page_html() -> str:
         fetch('/reports/completion-batches'),
         fetch('/reports/completion-templates'),
         fetch('/reports/completion-recipient-groups'),
-        fetch('/reports/completion-engagement')
+        fetch('/reports/completion-engagement'),
+        fetch('/reports/completion-provider-events')
       ]);
       const data = await response.json();
       const quality = await qualityResponse.json();
@@ -312,6 +315,7 @@ def admin_page_html() -> str:
       const completionTemplates = await completionTemplateResponse.json();
       const completionGroups = await completionGroupResponse.json();
       const completionEngagement = await completionEngagementResponse.json();
+      const completionProviderEvents = await completionProviderEventResponse.json();
       latestCompletionTemplates = completionTemplates;
       latestCompletionGroups = completionGroups;
       renderMetrics(data.metrics);
@@ -335,6 +339,7 @@ def admin_page_html() -> str:
       renderCompletionGroups(completionGroups);
       renderCompletionBatches(completionBatches);
       renderCompletionEngagement(completionEngagement);
+      renderCompletionProviderEvents(completionProviderEvents);
       renderTraces(traces);
       renderObservabilityExports(observabilityExports);
     }
@@ -355,6 +360,9 @@ def admin_page_html() -> str:
         ['완료 발송', metrics.completion_report_deliveries],
         ['완료 열람', metrics.completion_delivery_opens],
         ['완료 클릭', metrics.completion_delivery_clicks],
+        ['완료 반송', metrics.completion_delivery_bounces],
+        ['완료 신고', metrics.completion_delivery_complaints],
+        ['완료 제외', metrics.completion_delivery_suppressions],
         ['URL 모니터', metrics.source_monitors],
         ['소스 refresh', metrics.source_refresh_runs],
         ['refresh 실패', metrics.source_refresh_failures],
@@ -786,6 +794,25 @@ def admin_page_html() -> str:
           <p>delivery: ${item.delivery_id} / batch: ${item.batch_id}</p>
         </article>
       `).join('');
+    }
+
+    function renderCompletionProviderEvents(items) {
+      const root = document.querySelector('#completion-provider-events');
+      if (!items.length) {
+        root.innerHTML = '<p>아직 완료 리포트 provider webhook 이벤트가 없습니다.</p>';
+        return;
+      }
+      root.innerHTML = items.map((item) => {
+        const tone = item.delivery_status === 'failed' ? 'danger' : item.delivery_status === 'skipped' ? 'warn' : '';
+        return `
+          <article class="review-item quality-item ${tone}">
+            <span class="kicker">${item.provider_name} · ${item.event_type} · ${new Date(item.created_at).toLocaleString()}</span>
+            <h3>${item.delivery_status} · ${item.report_id}</h3>
+            <p>${item.provider_message || 'provider 메시지 없음'}</p>
+            <p>delivery: ${item.delivery_id} / batch: ${item.batch_id}</p>
+          </article>
+        `;
+      }).join('');
     }
 
     function renderCompletionGroups(items) {

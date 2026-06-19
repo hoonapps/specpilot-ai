@@ -32,6 +32,8 @@ from specpilot_ai.core.models import (
     CheckStatus,
     CompletionDeliveryEngagement,
     CompletionDeliveryEngagementRequest,
+    CompletionDeliveryProviderEvent,
+    CompletionDeliveryProviderWebhookRequest,
     CompletionRecipientGroup,
     CompletionRecipientGroupRequest,
     CompletionReportBatch,
@@ -781,6 +783,99 @@ class SpecPilotStore:
             ).fetchall()
         return [_completion_engagement_from_row(row) for row in rows]
 
+    def record_completion_delivery_provider_event(
+        self,
+        request: CompletionDeliveryProviderWebhookRequest,
+    ) -> CompletionDeliveryProviderEvent | None:
+        now = _now()
+        event_type = _completion_provider_event_type(request.event_type)
+        delivery_status = _completion_provider_delivery_status(event_type)
+        with self._connect() as conn:
+            delivery = conn.execute(
+                """
+                SELECT *
+                FROM completion_report_deliveries
+                WHERE (? != '' AND tracking_token = ?)
+                   OR (? IS NOT NULL AND delivery_id = ?)
+                """,
+                (
+                    request.tracking_token,
+                    request.tracking_token,
+                    request.delivery_id,
+                    request.delivery_id,
+                ),
+            ).fetchone()
+            if delivery is None:
+                return None
+            event = CompletionDeliveryProviderEvent(
+                provider_event_id=f"provider_evt_{uuid4().hex[:12]}",
+                delivery_id=delivery["delivery_id"],
+                batch_id=delivery["batch_id"],
+                report_id=delivery["report_id"],
+                workspace_id=delivery["workspace_id"],
+                provider_name=request.provider_name.strip() or "email_provider",
+                event_type=event_type,
+                delivery_status=delivery_status,
+                provider_message=request.provider_message,
+                metadata=request.metadata,
+                created_at=now,
+            )
+            conn.execute(
+                """
+                INSERT INTO completion_delivery_provider_events (
+                    provider_event_id, delivery_id, batch_id, report_id, workspace_id,
+                    provider_name, event_type, delivery_status, provider_message,
+                    metadata_json, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event.provider_event_id,
+                    event.delivery_id,
+                    event.batch_id,
+                    event.report_id,
+                    event.workspace_id,
+                    event.provider_name,
+                    event.event_type,
+                    event.delivery_status,
+                    event.provider_message,
+                    json.dumps(event.metadata, ensure_ascii=False),
+                    event.created_at,
+                ),
+            )
+            conn.execute(
+                """
+                UPDATE completion_report_deliveries
+                SET status = ?, provider_message = ?
+                WHERE delivery_id = ? AND workspace_id = ?
+                """,
+                (
+                    delivery_status,
+                    _completion_provider_message(event, delivery["provider_message"]),
+                    event.delivery_id,
+                    event.workspace_id,
+                ),
+            )
+        return event
+
+    def list_completion_delivery_provider_events_for_workspace(
+        self,
+        workspace_id: str,
+        limit: int = 50,
+    ) -> list[CompletionDeliveryProviderEvent]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM completion_delivery_provider_events
+                WHERE workspace_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (workspace_id, limit),
+            ).fetchall()
+        return [_completion_provider_event_from_row(row) for row in rows]
+
     def get_report(self, report_id: str) -> SavedReportDetail | None:
         return self.get_report_for_workspace("demo", report_id)
 
@@ -1426,8 +1521,8 @@ class SpecPilotStore:
                  AND p.workspace_id = l.workspace_id
                 WHERE l.workspace_id = ?
                 GROUP BY l.provider_id, l.host, provider_name
-                ORDER BY fetch_count DESC, blocked_count DESC
-                LIMIT 20
+                ORDER BY blocked_count DESC, fetch_count DESC
+                LIMIT 100
                 """,
                 (workspace_id,),
             ).fetchall()
@@ -2677,6 +2772,30 @@ class SpecPilotStore:
                 """,
                 params,
             ).fetchone()[0]
+            completion_delivery_bounces = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM completion_delivery_provider_events{where}
+                {' AND ' if where else ' WHERE '}event_type = 'bounced'
+                """,
+                params,
+            ).fetchone()[0]
+            completion_delivery_complaints = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM completion_delivery_provider_events{where}
+                {' AND ' if where else ' WHERE '}event_type = 'complained'
+                """,
+                params,
+            ).fetchone()[0]
+            completion_delivery_suppressions = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM completion_delivery_provider_events{where}
+                {' AND ' if where else ' WHERE '}event_type = 'suppressed'
+                """,
+                params,
+            ).fetchone()[0]
             triggered_alerts = conn.execute(
                 f"""
                 SELECT COUNT(*)
@@ -2736,6 +2855,9 @@ class SpecPilotStore:
             completion_report_deliveries=completion_report_deliveries,
             completion_delivery_opens=completion_delivery_opens,
             completion_delivery_clicks=completion_delivery_clicks,
+            completion_delivery_bounces=completion_delivery_bounces,
+            completion_delivery_complaints=completion_delivery_complaints,
+            completion_delivery_suppressions=completion_delivery_suppressions,
             source_monitors=source_monitors,
             source_refresh_runs=source_refresh_runs,
             source_refresh_failures=source_refresh_failures,
@@ -3087,6 +3209,21 @@ class SpecPilotStore:
                     FOREIGN KEY(delivery_id) REFERENCES completion_report_deliveries(delivery_id)
                 );
 
+                CREATE TABLE IF NOT EXISTS completion_delivery_provider_events (
+                    provider_event_id TEXT PRIMARY KEY,
+                    delivery_id TEXT NOT NULL,
+                    batch_id TEXT NOT NULL,
+                    report_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL DEFAULT 'demo',
+                    provider_name TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    delivery_status TEXT NOT NULL,
+                    provider_message TEXT NOT NULL DEFAULT '',
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(delivery_id) REFERENCES completion_report_deliveries(delivery_id)
+                );
+
                 CREATE TABLE IF NOT EXISTS trace_spans (
                     span_id TEXT PRIMARY KEY,
                     trace_id TEXT NOT NULL,
@@ -3212,6 +3349,10 @@ class SpecPilotStore:
                     ON completion_delivery_engagement(workspace_id, created_at);
                 CREATE INDEX IF NOT EXISTS idx_completion_engagement_delivery
                     ON completion_delivery_engagement(delivery_id, event_type);
+                CREATE INDEX IF NOT EXISTS idx_completion_provider_events_workspace
+                    ON completion_delivery_provider_events(workspace_id, created_at);
+                CREATE INDEX IF NOT EXISTS idx_completion_provider_events_delivery
+                    ON completion_delivery_provider_events(delivery_id, event_type);
                 CREATE INDEX IF NOT EXISTS idx_trace_spans_workspace
                     ON trace_spans(workspace_id, trace_id);
                 CREATE INDEX IF NOT EXISTS idx_observability_exports_workspace
@@ -3826,6 +3967,25 @@ def _completion_engagement_from_row(row: sqlite3.Row) -> CompletionDeliveryEngag
         workspace_id=data["workspace_id"],
         event_type=data["event_type"],
         target_masked=data["target_masked"],
+        metadata=json.loads(data["metadata_json"]),
+        created_at=data["created_at"],
+    )
+
+
+def _completion_provider_event_from_row(
+    row: sqlite3.Row,
+) -> CompletionDeliveryProviderEvent:
+    data = dict(row)
+    return CompletionDeliveryProviderEvent(
+        provider_event_id=data["provider_event_id"],
+        delivery_id=data["delivery_id"],
+        batch_id=data["batch_id"],
+        report_id=data["report_id"],
+        workspace_id=data["workspace_id"],
+        provider_name=data["provider_name"],
+        event_type=data["event_type"],
+        delivery_status=data["delivery_status"],
+        provider_message=data["provider_message"],
         metadata=json.loads(data["metadata_json"]),
         created_at=data["created_at"],
     )
@@ -4538,6 +4698,50 @@ def _completion_engagement_type(event_type: str) -> str:
     if normalized in {"reply", "replied"}:
         return "reply"
     return "custom"
+
+
+def _completion_provider_event_type(event_type: str) -> str:
+    normalized = event_type.strip().lower()
+    if normalized in {"delivered", "delivery", "sent", "accepted"}:
+        return "delivered"
+    if normalized in {"bounce", "bounced", "hard_bounce", "soft_bounce"}:
+        return "bounced"
+    if normalized in {"complaint", "complained", "spam", "spam_report"}:
+        return "complained"
+    if normalized in {"suppress", "suppressed", "unsubscribe", "unsubscribed"}:
+        return "suppressed"
+    if normalized in {"defer", "deferred", "retry", "delayed"}:
+        return "deferred"
+    if normalized in {"drop", "dropped", "rejected"}:
+        return "dropped"
+    return "custom"
+
+
+def _completion_provider_delivery_status(event_type: str) -> str:
+    if event_type == "delivered":
+        return "sent"
+    if event_type in {"bounced", "complained", "dropped"}:
+        return "failed"
+    if event_type == "suppressed":
+        return "skipped"
+    if event_type == "deferred":
+        return "retry_scheduled"
+    return "sent"
+
+
+def _completion_provider_message(
+    event: CompletionDeliveryProviderEvent,
+    previous_message: str,
+) -> str:
+    message = (
+        f"provider_webhook={event.provider_name}:{event.event_type} "
+        f"status={event.delivery_status}"
+    )
+    if event.provider_message:
+        message = f"{message} message={event.provider_message}"
+    if previous_message:
+        return f"{previous_message} | {message}"
+    return message
 
 
 def _completion_dispatch_status(
