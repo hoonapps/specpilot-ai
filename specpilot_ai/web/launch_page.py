@@ -206,6 +206,7 @@ def launch_page_html() -> str:
           </label>
           <div class="actions">
             <button class="primary" type="submit">분석 실행</button>
+            <button class="secondary" type="button" id="diagnose-intake">조건 진단</button>
             <button class="secondary" type="button" id="laptop-demo">노트북 데모</button>
           </div>
         </form>
@@ -223,6 +224,7 @@ def launch_page_html() -> str:
     const form = document.querySelector('#analysis-form');
     const results = document.querySelector('#results');
     const laptopDemo = document.querySelector('#laptop-demo');
+    const diagnoseButton = document.querySelector('#diagnose-intake');
     let latestAnalysis = null;
     let latestSavedReport = null;
 
@@ -496,6 +498,65 @@ def launch_page_html() -> str:
       bindResultActions();
     }
 
+    function renderDiagnosis(data) {
+      const questions = (data.clarifying_questions || []).map((item) => `<li>${item}</li>`).join('');
+      const slots = (data.slot_diagnostics || []).map((item) => `
+        <tr>
+          <td>${item.label}</td>
+          <td>${item.status}</td>
+          <td>${item.message}</td>
+          <td>${item.recommendation}</td>
+        </tr>
+      `).join('');
+      const mustHaves = (data.suggested_must_haves || []).map((item) => `<li>${item}</li>`).join('');
+      const exclusions = (data.suggested_exclusions || []).map((item) => `<li>${item}</li>`).join('');
+      const normalized = data.normalized_request || {};
+      results.innerHTML = `
+        <div class="status">
+          <span class="kicker">Intake readiness ${data.readiness_score}점</span>
+          <h2>${data.readiness_label}</h2>
+          <p>${data.next_action}</p>
+          <div class="actions">
+            <button class="primary mini-action" type="button" id="apply-diagnosis">추천 조건 적용</button>
+            <button class="secondary mini-action" type="button" id="run-diagnosed-analysis">이 조건으로 분석</button>
+          </div>
+        </div>
+        <section class="sections">
+          <div class="card">
+            <h3>추가 질문</h3>
+            <ul class="list">${questions || '<li>추가 질문 없이 분석 가능합니다.</li>'}</ul>
+          </div>
+          <div class="card">
+            <h3>추천 조건</h3>
+            <ul class="list">${mustHaves || '<li>추가 필수 조건 없음</li>'}</ul>
+            <ul class="list">${exclusions || '<li>추가 제외 조건 없음</li>'}</ul>
+          </div>
+          <div class="card comparison-card">
+            <h3>조건 진단표</h3>
+            <table>
+              <thead><tr><th>항목</th><th>상태</th><th>진단</th><th>권장 입력</th></tr></thead>
+              <tbody>${slots}</tbody>
+            </table>
+          </div>
+        </section>
+      `;
+      document.querySelector('#apply-diagnosis')?.addEventListener('click', () => {
+        document.querySelector('#purpose').value = normalized.purpose || document.querySelector('#purpose').value;
+        document.querySelector('#mustHaves').value = (normalized.must_haves || []).join(', ');
+        document.querySelector('#exclusions').value = (normalized.exclusions || []).join(', ');
+      });
+      document.querySelector('#run-diagnosed-analysis')?.addEventListener('click', async () => {
+        document.querySelector('#apply-diagnosis')?.click();
+        results.innerHTML = '<div class="status"><span class="kicker">Running</span><h2>진단 조건으로 분석 중입니다</h2><p>추천 조건을 반영해 후보 수집과 검증을 실행합니다.</p></div>';
+        const response = await fetch('/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload())
+        });
+        render(await response.json());
+      });
+    }
+
     function selectedProductId() {
       const top = latestAnalysis?.report?.top_recommendations?.[0]?.product?.product_id;
       const alertProduct = latestAnalysis?.report?.price_alerts?.[0]?.product_id;
@@ -625,6 +686,16 @@ def launch_page_html() -> str:
         body: JSON.stringify(payload())
       });
       render(await response.json());
+    });
+
+    diagnoseButton.addEventListener('click', async () => {
+      results.innerHTML = '<div class="status"><span class="kicker">Checking</span><h2>구매 조건을 진단 중입니다</h2><p>누락 조건, 되물어볼 질문, 추천 필수 조건을 계산합니다.</p></div>';
+      const response = await fetch('/intake/diagnose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload())
+      });
+      renderDiagnosis(await response.json());
     });
 
     laptopDemo.addEventListener('click', () => {

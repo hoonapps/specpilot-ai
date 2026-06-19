@@ -24,6 +24,7 @@ SpecPilot AI는 최저가 링크만 보여주는 쇼핑 도구가 아닙니다. 
 
 - FastAPI 기반 제품 API
 - 루트 경로(`/`)에서 바로 실행 가능한 웹 분석 화면
+- 분석 전 조건 진단: 누락 조건, 추가 질문, 추천 필수/제외 조건, 정규화 요청 생성
 - LangGraph 기반 11단계 구매 분석 워크플로
 - 데스크톱/노트북 후보 카탈로그
 - 모델 정규화와 중복 제거
@@ -118,6 +119,22 @@ curl http://127.0.0.1:8000/me \
 ```
 
 ### 분석 실행
+
+분석 전 입력 품질을 먼저 확인하려면 `/intake/diagnose`를 호출합니다. 이 응답은 바로 분석해도 되는지, 어떤 질문을 더 해야 하는지, 어떤 필수/제외 조건을 자동 보강할지 알려줍니다.
+
+```bash
+curl -X POST http://127.0.0.1:8000/intake/diagnose \
+  -H "Content-Type: application/json" \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY" \
+  -d '{
+    "query": "영상 편집과 QHD 144Hz 게임용 데스크톱 220만원 안에서 맞춰줘",
+    "category": "desktop_pc",
+    "budget_krw": 2200000,
+    "purpose": "Premiere Pro, QHD gaming",
+    "must_haves": ["32GB RAM", "QHD 144Hz"],
+    "exclusions": ["중고", "리퍼"]
+  }'
+```
 
 ```bash
 curl -X POST http://127.0.0.1:8000/analyze \
@@ -366,6 +383,9 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 
 ## 응답에서 봐야 할 핵심 필드
 
+- `/intake/diagnose.readiness_score`: 분석 준비도 점수
+- `/intake/diagnose.clarifying_questions`: 분석 전 되물어볼 핵심 질문
+- `/intake/diagnose.normalized_request`: 추천 조건을 보강한 분석 요청
 - `report.top_recommendations`: 최종 추천 TOP 3
 - `report.excluded_products`: 제외 후보 2개와 이유
 - `report.comparison_table`: 추천/제외 후보 5개 비교표
@@ -457,6 +477,7 @@ make docker-build
 - 노트북 분석이 호환성 체크와 벤치마크 근거를 포함하는지
 - Neo4j 구매 그래프 스키마가 핵심 노드/관계를 갖는지
 - 루트 웹 UI가 표시되는지
+- `/intake/diagnose`가 누락 조건, 추가 질문, 정규화 요청을 반환하는지
 - `/analyze`, `/alerts/preview`, `/traces/{trace_id}`가 동작하는지
 - `/reports/save`, `/reports/{report_id}`, `/alerts/subscribe`, `/ops/metrics`가 동작하는지
 - `/reports/{report_id}/share`, `/public/reports/{share_token}`, `/r/{share_token}`이 공개 공유 리포트를 만들고 해제하는지
@@ -479,6 +500,7 @@ GitHub Actions는 `main` push와 PR에서 다음을 실행합니다.
 ## 운영 원칙
 
 - 가격은 수집 시각과 출처를 함께 보여줍니다.
+- 분석 전 조건 진단으로 예산, 목적, 필수 조건, 카테고리별 맥락이 부족한 요청을 먼저 보강합니다.
 - 가격 소스는 캐시 TTL과 만료 시 재확인 정책을 함께 보여줍니다.
 - 리뷰는 확정 판단이 아니라 리스크 신호로 표현합니다.
 - 후보별 근거 팩은 가격 계산식, 리뷰 근거 수, 벤치마크, 호환성 검증을 한 카드로 보여줍니다.

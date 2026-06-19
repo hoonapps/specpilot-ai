@@ -74,6 +74,38 @@ class AnalyzeRequest(BaseModel):
     channels: list[str] = Field(default_factory=lambda: ["price_compare", "open_market"])
 
 
+class IntakeDiagnosisRequest(BaseModel):
+    query: str = ""
+    category: Category = Category.desktop_pc
+    budget_krw: int | None = Field(default=None, ge=0)
+    purpose: str = ""
+    must_haves: list[str] = Field(default_factory=list)
+    exclusions: list[str] = Field(default_factory=list)
+    purchase_timing: str = "within_30_days"
+    channels: list[str] = Field(default_factory=list)
+
+
+class IntakeSlotDiagnosis(BaseModel):
+    slot: str
+    label: str
+    status: CheckStatus
+    message: str
+    recommendation: str
+
+
+class IntakeDiagnosisResponse(BaseModel):
+    readiness_score: float = Field(ge=0, le=100)
+    readiness_label: str
+    next_action: str
+    missing_slots: list[str] = Field(default_factory=list)
+    clarifying_questions: list[str] = Field(default_factory=list)
+    suggested_must_haves: list[str] = Field(default_factory=list)
+    suggested_exclusions: list[str] = Field(default_factory=list)
+    slot_diagnostics: list[IntakeSlotDiagnosis] = Field(default_factory=list)
+    normalized_request: AnalyzeRequest
+    warnings: list[str] = Field(default_factory=list)
+
+
 class ProductCandidate(BaseModel):
     id: str
     brand: str

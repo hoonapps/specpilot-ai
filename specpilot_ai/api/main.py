@@ -17,6 +17,8 @@ from specpilot_ai.core.models import (
     Category,
     FeedbackRecord,
     FeedbackRequest,
+    IntakeDiagnosisRequest,
+    IntakeDiagnosisResponse,
     OperationsMetrics,
     PriceAlertPlan,
     ProductBrief,
@@ -39,6 +41,7 @@ from specpilot_ai.core.models import (
 )
 from specpilot_ai.graph.neo4j_client import Neo4jRepository
 from specpilot_ai.graph.product_graph import pc_purchase_graph_schema
+from specpilot_ai.services.intake import diagnose_intake
 from specpilot_ai.services.trust import build_trust_policy
 from specpilot_ai.sources.collector import SourceCollector
 from specpilot_ai.storage.sqlite_store import SpecPilotStore
@@ -181,6 +184,11 @@ def demo_scenarios() -> dict[str, list[dict[str, object]]]:
 @app.get("/categories")
 def categories() -> dict[str, list[str]]:
     return {"mvp_categories": [category.value for category in Category]}
+
+
+@app.post("/intake/diagnose", response_model=IntakeDiagnosisResponse)
+def intake_diagnosis(request: IntakeDiagnosisRequest) -> IntakeDiagnosisResponse:
+    return diagnose_intake(request)
 
 
 @app.get("/graph/schema")

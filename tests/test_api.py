@@ -13,6 +13,7 @@ def test_launch_page_exposes_product_ui() -> None:
     assert response.status_code == 200
     assert "SpecPilot AI" in response.text
     assert "분석 실행" in response.text
+    assert "조건 진단" in response.text
     assert "목표가 도달 테스트" in response.text
     assert "공유 링크 생성" in response.text
     assert "공유용 검토 브리프" in response.text
@@ -74,6 +75,53 @@ def test_trust_policy_endpoint_exposes_cache_and_fairness_rules() -> None:
     assert payload["fairness_rules"]
     assert payload["review_rules"]
     assert payload["source_assessments"]
+
+
+def test_intake_diagnosis_returns_questions_and_normalized_request() -> None:
+    weak = client.post(
+        "/intake/diagnose",
+        json={
+            "query": "PC 추천",
+            "category": "desktop_pc",
+            "budget_krw": None,
+            "purpose": "",
+            "must_haves": [],
+            "exclusions": [],
+        },
+    )
+
+    assert weak.status_code == 200
+    weak_payload = weak.json()
+    assert weak_payload["readiness_label"] == "분석 전 질문 필요"
+    assert "budget_krw" in weak_payload["missing_slots"]
+    assert "purpose" in weak_payload["missing_slots"]
+    assert weak_payload["clarifying_questions"]
+    assert "중고" in weak_payload["suggested_exclusions"]
+    assert weak_payload["normalized_request"]["channels"] == [
+        "price_compare",
+        "open_market",
+        "official_store",
+    ]
+
+    strong = client.post(
+        "/intake/diagnose",
+        json={
+            "query": "영상 편집과 QHD 144Hz 게임용 데스크톱 220만원 안에서 맞춰줘",
+            "category": "desktop_pc",
+            "budget_krw": 2_200_000,
+            "purpose": "Premiere Pro, QHD gaming",
+            "must_haves": ["32GB RAM", "QHD 144Hz"],
+            "exclusions": ["중고", "리퍼"],
+        },
+    )
+
+    assert strong.status_code == 200
+    strong_payload = strong.json()
+    assert strong_payload["readiness_score"] >= 78
+    assert strong_payload["readiness_label"] == "바로 분석 가능"
+    assert not strong_payload["missing_slots"]
+    assert strong_payload["normalized_request"]["purpose"] == "Premiere Pro, QHD gaming"
+    assert "출처 없는 가격" in strong_payload["normalized_request"]["exclusions"]
 
 
 def test_analyze_endpoint_returns_trace_and_alerts() -> None:
