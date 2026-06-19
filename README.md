@@ -43,6 +43,8 @@ SpecPilot AI는 최저가 링크만 보여주는 쇼핑 도구가 아닙니다. 
 
 ## 빠른 실행
 
+### 로컬 Python
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
@@ -60,6 +62,30 @@ API 문서:
 
 ```text
 http://127.0.0.1:8000/docs
+```
+
+### Docker Compose
+
+```bash
+docker compose up --build
+```
+
+앱:
+
+```text
+http://127.0.0.1:8000/
+```
+
+관리자 콘솔:
+
+```text
+http://127.0.0.1:8000/admin
+```
+
+컨테이너 헬스체크:
+
+```bash
+curl http://127.0.0.1:8000/ready
 ```
 
 ## 대표 API
@@ -256,6 +282,18 @@ source .venv/bin/activate
 pytest -q
 ```
 
+전체 품질 게이트:
+
+```bash
+make verify
+```
+
+Docker 이미지 빌드:
+
+```bash
+make docker-build
+```
+
 현재 테스트는 다음을 검증합니다.
 
 - 데스크톱 PC 분석이 TOP 3와 제외 후보 2개를 반환하는지
@@ -265,6 +303,16 @@ pytest -q
 - `/analyze`, `/alerts/preview`, `/traces/{trace_id}`가 동작하는지
 - `/reports/save`, `/reports/{report_id}`, `/alerts/subscribe`, `/ops/metrics`가 동작하는지
 - `/sources/status`, `/sources/collect`, `/admin/reviews`, `/admin/dashboard`가 동작하는지
+- `/health`, `/ready` 운영 엔드포인트가 동작하는지
+
+## CI
+
+GitHub Actions는 `main` push와 PR에서 다음을 실행합니다.
+
+- Python 3.12 설치
+- `ruff check .`
+- `pytest -q`
+- Docker 이미지 빌드
 
 ## 운영 원칙
 
@@ -280,5 +328,5 @@ pytest -q
 - 사용자 계정과 저장 견적 권한 모델
 - 실제 가격 알림 발송 채널 연동
 - LangSmith 또는 OpenTelemetry trace 저장
-- 관리자용 출처 오류율/분석 비용 대시보드
+- 관리자용 분석 비용 대시보드
 - 실제 구매 시나리오 베타 테스트
