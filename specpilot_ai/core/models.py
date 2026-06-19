@@ -578,6 +578,55 @@ class AlertEvaluationResponse(BaseModel):
     events: list[AlertDeliveryEvent] = Field(default_factory=list)
 
 
+class AlertNotificationChannelRequest(BaseModel):
+    channel: str = "email"
+    display_name: str = ""
+    target: str = ""
+    enabled: bool = True
+    retry_limit: int = Field(default=3, ge=0, le=10)
+
+
+class AlertNotificationChannel(BaseModel):
+    channel_id: str
+    workspace_id: str = "demo"
+    channel: str
+    display_name: str
+    target_masked: str
+    enabled: bool
+    retry_limit: int
+    created_at: str
+    updated_at: str
+
+
+class AlertDispatchRequest(BaseModel):
+    event_ids: list[str] = Field(default_factory=list)
+    dry_run: bool = False
+    limit: int = Field(default=50, ge=1, le=200)
+
+
+class AlertDeliveryAttempt(BaseModel):
+    attempt_id: str
+    event_id: str
+    subscription_id: str
+    workspace_id: str = "demo"
+    channel: str
+    contact_masked: str
+    delivery_status: str
+    provider_message: str
+    retry_count: int = 0
+    next_retry_at: str | None = None
+    created_at: str
+
+
+class AlertDispatchResponse(BaseModel):
+    workspace_id: str
+    selected_count: int
+    sent_count: int
+    failed_count: int
+    dry_run: bool
+    attempts: list[AlertDeliveryAttempt] = Field(default_factory=list)
+
+
 class OperationsMetrics(BaseModel):
     workspace_id: str | None = None
     analysis_runs: int
@@ -585,6 +634,10 @@ class OperationsMetrics(BaseModel):
     alert_subscriptions: int
     alert_events: int = 0
     triggered_alerts: int = 0
+    alert_channels: int = 0
+    alert_delivery_attempts: int = 0
+    sent_alert_deliveries: int = 0
+    failed_alert_deliveries: int = 0
     feedback_count: int = 0
     beta_leads: int = 0
     latest_trace_id: str | None = None

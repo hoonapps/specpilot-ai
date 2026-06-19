@@ -5,9 +5,14 @@ from specpilot_ai.api.auth import workspace_context
 from specpilot_ai.core.config import get_settings
 from specpilot_ai.core.models import (
     AdminReviewDashboard,
+    AlertDeliveryAttempt,
     AlertDeliveryEvent,
+    AlertDispatchRequest,
+    AlertDispatchResponse,
     AlertEvaluationRequest,
     AlertEvaluationResponse,
+    AlertNotificationChannel,
+    AlertNotificationChannelRequest,
     AlertSubscription,
     AlertSubscriptionRequest,
     AnalyzeRequest,
@@ -374,6 +379,49 @@ def list_alert_events(
     workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
 ) -> list[AlertDeliveryEvent]:
     return _store().list_alert_events_for_workspace(workspace.workspace_id, limit=limit)
+
+
+@app.post("/alerts/channels", response_model=AlertNotificationChannel)
+def upsert_alert_channel(
+    request: AlertNotificationChannelRequest,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> AlertNotificationChannel:
+    try:
+        return _store().upsert_alert_channel_for_workspace(workspace.workspace_id, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/alerts/channels", response_model=list[AlertNotificationChannel])
+def list_alert_channels(
+    limit: int = 50,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> list[AlertNotificationChannel]:
+    return _store().list_alert_channels_for_workspace(workspace.workspace_id, limit=limit)
+
+
+@app.post("/alerts/dispatch", response_model=AlertDispatchResponse)
+def dispatch_alerts(
+    request: AlertDispatchRequest,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> AlertDispatchResponse:
+    return _store().dispatch_alert_events_for_workspace(
+        workspace.workspace_id,
+        event_ids=request.event_ids,
+        dry_run=request.dry_run,
+        limit=request.limit,
+    )
+
+
+@app.get("/alerts/deliveries", response_model=list[AlertDeliveryAttempt])
+def list_alert_deliveries(
+    limit: int = 50,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> list[AlertDeliveryAttempt]:
+    return _store().list_alert_delivery_attempts_for_workspace(
+        workspace.workspace_id,
+        limit=limit,
+    )
 
 
 @app.get("/ops/metrics", response_model=OperationsMetrics)

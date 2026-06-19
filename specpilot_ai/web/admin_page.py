@@ -139,25 +139,58 @@ def admin_page_html() -> str:
         <div class="review-list" id="beta-leads"></div>
       </div>
     </section>
+    <section class="grid top-grid" style="margin-top:14px">
+      <div class="panel">
+        <h2>알림 발송 채널</h2>
+        <p>목표가 도달 큐를 이메일, 웹훅, 문자 outbox로 발송 처리합니다.</p>
+        <input id="channel-target" value="ops@example.com" />
+        <div class="actions">
+          <button class="primary" id="save-email-channel">이메일 채널 저장</button>
+          <button class="secondary" id="dispatch-alerts">큐 발송</button>
+        </div>
+        <div class="review-list" id="channels"></div>
+      </div>
+      <div class="panel">
+        <h2>발송 시도</h2>
+        <p>발송 성공, 실패, 재시도 예정 상태를 확인합니다.</p>
+        <div class="review-list" id="deliveries"></div>
+      </div>
+    </section>
   </main>
   <script>
     async function loadDashboard() {
-      const [response, qualityResponse, feedbackResponse, betaLeadResponse] = await Promise.all([
+      const [
+        response,
+        qualityResponse,
+        feedbackResponse,
+        betaLeadResponse,
+        channelResponse,
+        deliveryResponse,
+        eventResponse
+      ] = await Promise.all([
         fetch('/admin/dashboard'),
         fetch('/ops/quality'),
         fetch('/feedback'),
-        fetch('/beta/leads')
+        fetch('/beta/leads'),
+        fetch('/alerts/channels'),
+        fetch('/alerts/deliveries'),
+        fetch('/alerts/events')
       ]);
       const data = await response.json();
       const quality = await qualityResponse.json();
       const feedback = await feedbackResponse.json();
       const betaLeads = await betaLeadResponse.json();
+      const channels = await channelResponse.json();
+      const deliveries = await deliveryResponse.json();
+      const events = await eventResponse.json();
       renderMetrics(data.metrics);
       renderSources(data.adapter_statuses);
       renderReviews(data.pending_reviews);
       renderQuality(quality);
       renderFeedback(feedback);
       renderBetaLeads(betaLeads);
+      renderChannels(channels, events);
+      renderDeliveries(deliveries);
     }
 
     function renderMetrics(metrics) {
@@ -166,6 +199,10 @@ def admin_page_html() -> str:
         ['저장', metrics.saved_reports],
         ['알림', metrics.alert_subscriptions],
         ['발송 큐', metrics.alert_events],
+        ['채널', metrics.alert_channels],
+        ['발송 시도', metrics.alert_delivery_attempts],
+        ['발송 성공', metrics.sent_alert_deliveries],
+        ['발송 실패', metrics.failed_alert_deliveries],
         ['트리거', metrics.triggered_alerts],
         ['품질', metrics.average_quality_score],
         ['예상비용', Math.round(metrics.estimated_cost_krw) + '원'],
@@ -262,6 +299,44 @@ def admin_page_html() -> str:
       `).join('');
     }
 
+    function renderChannels(items, events) {
+      const root = document.querySelector('#channels');
+      const queuedCount = events.filter((item) => ['queued', 'failed'].includes(item.delivery_status)).length;
+      const channelCards = items.length
+        ? items.map((item) => `
+          <article class="review-item">
+            <span class="kicker">${item.channel} · ${item.enabled ? '활성' : '비활성'}</span>
+            <h3>${item.display_name}</h3>
+            <p>대상: ${item.target_masked} / 재시도 한도: ${item.retry_limit}</p>
+          </article>
+        `).join('')
+        : '<p>아직 등록된 발송 채널이 없습니다.</p>';
+      root.innerHTML = `
+        <article class="review-item">
+          <span class="kicker">Queue</span>
+          <h3>발송 대기 ${queuedCount}건</h3>
+          <p>목표가 도달 이벤트 중 queued/failed 상태만 발송 처리됩니다.</p>
+        </article>
+        ${channelCards}
+      `;
+    }
+
+    function renderDeliveries(items) {
+      const root = document.querySelector('#deliveries');
+      if (!items.length) {
+        root.innerHTML = '<p>아직 발송 시도 기록이 없습니다.</p>';
+        return;
+      }
+      root.innerHTML = items.map((item) => `
+        <article class="review-item">
+          <span class="kicker">${item.channel} · ${item.delivery_status}</span>
+          <h3>${item.contact_masked}</h3>
+          <p>${item.provider_message}</p>
+          <p>이벤트: ${item.event_id} / 시도: ${item.retry_count}${item.next_retry_at ? ' / 재시도: ' + item.next_retry_at : ''}</p>
+        </article>
+      `).join('');
+    }
+
     async function decide(reviewId, status) {
       await fetch(`/admin/reviews/${reviewId}/decision`, {
         method: 'POST',
@@ -280,6 +355,28 @@ def admin_page_html() -> str:
           category: 'desktop_pc',
           limit: 16
         })
+      });
+      await loadDashboard();
+    });
+    document.querySelector('#save-email-channel').addEventListener('click', async () => {
+      await fetch('/alerts/channels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel: 'email',
+          display_name: '운영 이메일 outbox',
+          target: document.querySelector('#channel-target').value,
+          enabled: true,
+          retry_limit: 3
+        })
+      });
+      await loadDashboard();
+    });
+    document.querySelector('#dispatch-alerts').addEventListener('click', async () => {
+      await fetch('/alerts/dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dry_run: false, limit: 50 })
       });
       await loadDashboard();
     });

@@ -60,6 +60,8 @@ def test_admin_page_exposes_review_console() -> None:
     assert "SpecPilot AI Admin" in response.text
     assert "소스 수집" in response.text
     assert "발송 큐" in response.text
+    assert "알림 발송 채널" in response.text
+    assert "발송 시도" in response.text
     assert "품질/비용 감사" in response.text
     assert "사용자 피드백" in response.text
     assert "베타 리드" in response.text
@@ -300,6 +302,11 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
     assert evaluated.status_code == 200
     evaluated_payload = evaluated.json()
     assert evaluated_payload["triggered_count"] >= 1
+    event_id = next(
+        event["event_id"]
+        for event in evaluated_payload["events"]
+        if event["subscription_id"] == subscription_id
+    )
     assert any(
         event["subscription_id"] == subscription_id
         and event["delivery_status"] == "queued"
@@ -309,6 +316,57 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
     events = client.get("/alerts/events", headers=WORKSPACE_A)
     assert events.status_code == 200
     assert any(event["subscription_id"] == subscription_id for event in events.json())
+
+    channel = client.post(
+        "/alerts/channels",
+        headers=WORKSPACE_A,
+        json={
+            "channel": "email",
+            "display_name": "pytest 이메일 outbox",
+            "target": "ops@example.com",
+            "enabled": True,
+            "retry_limit": 2,
+        },
+    )
+    assert channel.status_code == 200
+    assert channel.json()["channel"] == "email"
+    assert channel.json()["target_masked"] == "op***@example.com"
+
+    channels = client.get("/alerts/channels", headers=WORKSPACE_A)
+    assert any(item["channel"] == "email" for item in channels.json())
+
+    isolated_channels = client.get("/alerts/channels", headers=WORKSPACE_B)
+    assert all(item["channel"] != "email" for item in isolated_channels.json())
+
+    dispatched = client.post(
+        "/alerts/dispatch",
+        headers=WORKSPACE_A,
+        json={"event_ids": [event_id], "dry_run": False, "limit": 20},
+    )
+    assert dispatched.status_code == 200
+    dispatch_payload = dispatched.json()
+    assert dispatch_payload["selected_count"] >= 1
+    assert dispatch_payload["sent_count"] >= 1
+    assert any(
+        attempt["subscription_id"] == subscription_id
+        and attempt["delivery_status"] == "sent"
+        and attempt["channel"] == "email"
+        for attempt in dispatch_payload["attempts"]
+    )
+
+    deliveries = client.get("/alerts/deliveries", headers=WORKSPACE_A)
+    assert deliveries.status_code == 200
+    assert any(
+        attempt["subscription_id"] == subscription_id
+        and attempt["delivery_status"] == "sent"
+        for attempt in deliveries.json()
+    )
+
+    isolated_deliveries = client.get("/alerts/deliveries", headers=WORKSPACE_B)
+    assert all(
+        attempt["subscription_id"] != subscription_id
+        for attempt in isolated_deliveries.json()
+    )
 
     isolated_events = client.get("/alerts/events", headers=WORKSPACE_B)
     assert all(event["subscription_id"] != subscription_id for event in isolated_events.json())
@@ -324,6 +382,9 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
     assert payload["alert_subscriptions"] >= 1
     assert payload["alert_events"] >= 1
     assert payload["triggered_alerts"] >= 1
+    assert payload["alert_channels"] >= 1
+    assert payload["alert_delivery_attempts"] >= 1
+    assert payload["sent_alert_deliveries"] >= 1
     assert payload["average_quality_score"] > 0
     assert payload["estimated_cost_krw"] > 0
 

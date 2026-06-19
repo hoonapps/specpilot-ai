@@ -1,13 +1,17 @@
 import json
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
 from specpilot_ai.core.config import Settings
 from specpilot_ai.core.models import (
+    AlertDeliveryAttempt,
     AlertDeliveryEvent,
+    AlertDispatchResponse,
     AlertEvaluationResponse,
+    AlertNotificationChannel,
+    AlertNotificationChannelRequest,
     AlertSubscription,
     AnalysisQualityAudit,
     AnalyzeResponse,
@@ -26,6 +30,8 @@ from specpilot_ai.core.models import (
     SavedReportSummary,
     SourceCandidate,
 )
+
+SUPPORTED_ALERT_CHANNELS = {"email", "webhook", "sms"}
 
 
 class SpecPilotStore:
@@ -557,6 +563,178 @@ class SpecPilotStore:
             ).fetchall()
         return [_alert_event_from_row(row) for row in rows]
 
+    def upsert_alert_channel_for_workspace(
+        self,
+        workspace_id: str,
+        request: AlertNotificationChannelRequest,
+    ) -> AlertNotificationChannel:
+        channel = request.channel.strip().lower()
+        if channel not in SUPPORTED_ALERT_CHANNELS:
+            raise ValueError(
+                f"지원하지 않는 알림 채널입니다: {request.channel}. "
+                f"가능한 채널: {', '.join(sorted(SUPPORTED_ALERT_CHANNELS))}"
+            )
+        now = _now()
+        display_name = request.display_name.strip() or _default_channel_name(channel)
+        target = request.target.strip() or _default_channel_target(channel)
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT channel_id, created_at
+                FROM alert_notification_channels
+                WHERE workspace_id = ? AND channel = ?
+                """,
+                (workspace_id, channel),
+            ).fetchone()
+            channel_id = row["channel_id"] if row else f"channel_{uuid4().hex[:12]}"
+            created_at = row["created_at"] if row else now
+            conn.execute(
+                """
+                INSERT INTO alert_notification_channels (
+                    channel_id, workspace_id, channel, display_name, target,
+                    enabled, retry_limit, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(workspace_id, channel) DO UPDATE SET
+                    display_name=excluded.display_name,
+                    target=excluded.target,
+                    enabled=excluded.enabled,
+                    retry_limit=excluded.retry_limit,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    channel_id,
+                    workspace_id,
+                    channel,
+                    display_name,
+                    target,
+                    1 if request.enabled else 0,
+                    request.retry_limit,
+                    created_at,
+                    now,
+                ),
+            )
+        return AlertNotificationChannel(
+            channel_id=channel_id,
+            workspace_id=workspace_id,
+            channel=channel,
+            display_name=display_name,
+            target_masked=_mask_target(target),
+            enabled=request.enabled,
+            retry_limit=request.retry_limit,
+            created_at=created_at,
+            updated_at=now,
+        )
+
+    def list_alert_channels_for_workspace(
+        self,
+        workspace_id: str,
+        limit: int = 50,
+    ) -> list[AlertNotificationChannel]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM alert_notification_channels
+                WHERE workspace_id = ?
+                ORDER BY channel ASC
+                LIMIT ?
+                """,
+                (workspace_id, limit),
+            ).fetchall()
+        return [_alert_channel_from_row(row) for row in rows]
+
+    def dispatch_alert_events_for_workspace(
+        self,
+        workspace_id: str,
+        *,
+        event_ids: list[str],
+        dry_run: bool,
+        limit: int,
+    ) -> AlertDispatchResponse:
+        events = self._queued_alert_events(workspace_id, event_ids=event_ids, limit=limit)
+        channels = self._alert_channel_config_map(workspace_id)
+        attempts: list[AlertDeliveryAttempt] = []
+        now = _now()
+        with self._connect() as conn:
+            for event in events:
+                event_attempts: list[AlertDeliveryAttempt] = []
+                for channel in event.channels:
+                    channel_key = channel.strip().lower()
+                    attempt_number = self._next_attempt_number(
+                        conn,
+                        event.event_id,
+                        channel_key,
+                    )
+                    status, provider_message, next_retry_at = _dispatch_status(
+                        channel_key,
+                        channels.get(channel_key),
+                        attempt_number,
+                        dry_run,
+                        now,
+                    )
+                    attempt = AlertDeliveryAttempt(
+                        attempt_id=f"attempt_{uuid4().hex[:12]}",
+                        event_id=event.event_id,
+                        subscription_id=event.subscription_id,
+                        workspace_id=workspace_id,
+                        channel=channel_key,
+                        contact_masked=event.contact_masked,
+                        delivery_status=status,
+                        provider_message=provider_message,
+                        retry_count=attempt_number,
+                        next_retry_at=next_retry_at,
+                        created_at=now,
+                    )
+                    event_attempts.append(attempt)
+                    attempts.append(attempt)
+                    if not dry_run:
+                        self._insert_alert_attempt(conn, attempt)
+                if not dry_run and event_attempts:
+                    conn.execute(
+                        """
+                        UPDATE alert_delivery_events
+                        SET delivery_status = ?
+                        WHERE event_id = ? AND workspace_id = ?
+                        """,
+                        (
+                            "sent"
+                            if any(
+                                attempt.delivery_status == "sent"
+                                for attempt in event_attempts
+                            )
+                            else "failed",
+                            event.event_id,
+                            workspace_id,
+                        ),
+                    )
+        return AlertDispatchResponse(
+            workspace_id=workspace_id,
+            selected_count=len(events),
+            sent_count=sum(1 for attempt in attempts if attempt.delivery_status == "sent"),
+            failed_count=sum(1 for attempt in attempts if attempt.delivery_status == "failed"),
+            dry_run=dry_run,
+            attempts=attempts,
+        )
+
+    def list_alert_delivery_attempts_for_workspace(
+        self,
+        workspace_id: str,
+        limit: int = 50,
+    ) -> list[AlertDeliveryAttempt]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM alert_delivery_attempts
+                WHERE workspace_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (workspace_id, limit),
+            ).fetchall()
+        return [_alert_attempt_from_row(row) for row in rows]
+
     def quality_dashboard_for_workspace(
         self,
         workspace_id: str | None,
@@ -828,11 +1006,35 @@ class SpecPilotStore:
                 f"SELECT COUNT(*) FROM alert_delivery_events{where}",
                 params,
             ).fetchone()[0]
+            alert_channels = conn.execute(
+                f"SELECT COUNT(*) FROM alert_notification_channels{where}",
+                params,
+            ).fetchone()[0]
+            alert_delivery_attempts = conn.execute(
+                f"SELECT COUNT(*) FROM alert_delivery_attempts{where}",
+                params,
+            ).fetchone()[0]
+            sent_alert_deliveries = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM alert_delivery_attempts{where}
+                {' AND ' if where else ' WHERE '}delivery_status = 'sent'
+                """,
+                params,
+            ).fetchone()[0]
+            failed_alert_deliveries = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM alert_delivery_attempts{where}
+                {' AND ' if where else ' WHERE '}delivery_status = 'failed'
+                """,
+                params,
+            ).fetchone()[0]
             triggered_alerts = conn.execute(
                 f"""
                 SELECT COUNT(*)
                 FROM alert_delivery_events{where}
-                {' AND ' if where else ' WHERE '}delivery_status IN ('queued', 'sent')
+                {' AND ' if where else ' WHERE '}delivery_status IN ('queued', 'sent', 'failed')
                 """,
                 params,
             ).fetchone()[0]
@@ -877,6 +1079,10 @@ class SpecPilotStore:
             alert_subscriptions=alert_subscriptions,
             alert_events=alert_events,
             triggered_alerts=triggered_alerts,
+            alert_channels=alert_channels,
+            alert_delivery_attempts=alert_delivery_attempts,
+            sent_alert_deliveries=sent_alert_deliveries,
+            failed_alert_deliveries=failed_alert_deliveries,
             feedback_count=feedback_count,
             beta_leads=beta_leads,
             latest_trace_id=latest["trace_id"] if latest else None,
@@ -972,6 +1178,34 @@ class SpecPilotStore:
                     FOREIGN KEY(subscription_id) REFERENCES alert_subscriptions(subscription_id)
                 );
 
+                CREATE TABLE IF NOT EXISTS alert_notification_channels (
+                    channel_id TEXT PRIMARY KEY,
+                    workspace_id TEXT NOT NULL DEFAULT 'demo',
+                    channel TEXT NOT NULL,
+                    display_name TEXT NOT NULL,
+                    target TEXT NOT NULL,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    retry_limit INTEGER NOT NULL DEFAULT 3,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(workspace_id, channel)
+                );
+
+                CREATE TABLE IF NOT EXISTS alert_delivery_attempts (
+                    attempt_id TEXT PRIMARY KEY,
+                    event_id TEXT NOT NULL,
+                    subscription_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL DEFAULT 'demo',
+                    channel TEXT NOT NULL,
+                    contact_masked TEXT NOT NULL,
+                    delivery_status TEXT NOT NULL,
+                    provider_message TEXT NOT NULL,
+                    retry_count INTEGER NOT NULL DEFAULT 0,
+                    next_retry_at TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(event_id) REFERENCES alert_delivery_events(event_id)
+                );
+
                 CREATE TABLE IF NOT EXISTS user_feedback (
                     feedback_id TEXT PRIMARY KEY,
                     trace_id TEXT NOT NULL,
@@ -1008,6 +1242,12 @@ class SpecPilotStore:
                     ON alert_delivery_events(workspace_id);
                 CREATE INDEX IF NOT EXISTS idx_alert_events_subscription
                     ON alert_delivery_events(subscription_id);
+                CREATE INDEX IF NOT EXISTS idx_alert_channels_workspace
+                    ON alert_notification_channels(workspace_id);
+                CREATE INDEX IF NOT EXISTS idx_alert_attempts_workspace
+                    ON alert_delivery_attempts(workspace_id);
+                CREATE INDEX IF NOT EXISTS idx_alert_attempts_event
+                    ON alert_delivery_attempts(event_id);
                 CREATE INDEX IF NOT EXISTS idx_user_feedback_workspace
                     ON user_feedback(workspace_id);
                 CREATE INDEX IF NOT EXISTS idx_user_feedback_trace
@@ -1055,6 +1295,108 @@ class SpecPilotStore:
                 ON alert_subscriptions(workspace_id)
                 """
             )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_alert_attempts_status
+                ON alert_delivery_attempts(workspace_id, delivery_status)
+                """
+            )
+
+    def _queued_alert_events(
+        self,
+        workspace_id: str,
+        *,
+        event_ids: list[str],
+        limit: int,
+    ) -> list[AlertDeliveryEvent]:
+        with self._connect() as conn:
+            if event_ids:
+                placeholders = ", ".join("?" for _ in event_ids)
+                rows = conn.execute(
+                    f"""
+                    SELECT *
+                    FROM alert_delivery_events
+                    WHERE workspace_id = ?
+                      AND event_id IN ({placeholders})
+                      AND delivery_status IN ('queued', 'failed')
+                    ORDER BY created_at ASC
+                    LIMIT ?
+                    """,
+                    (workspace_id, *event_ids, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM alert_delivery_events
+                    WHERE workspace_id = ?
+                      AND delivery_status IN ('queued', 'failed')
+                    ORDER BY created_at ASC
+                    LIMIT ?
+                    """,
+                    (workspace_id, limit),
+                ).fetchall()
+        return [_alert_event_from_row(row) for row in rows]
+
+    def _alert_channel_config_map(
+        self,
+        workspace_id: str,
+    ) -> dict[str, sqlite3.Row]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM alert_notification_channels
+                WHERE workspace_id = ?
+                """,
+                (workspace_id,),
+            ).fetchall()
+        return {row["channel"]: row for row in rows}
+
+    def _next_attempt_number(
+        self,
+        conn: sqlite3.Connection,
+        event_id: str,
+        channel: str,
+    ) -> int:
+        row = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM alert_delivery_attempts
+            WHERE event_id = ? AND channel = ?
+            """,
+            (event_id, channel),
+        ).fetchone()
+        return int(row[0]) + 1
+
+    def _insert_alert_attempt(
+        self,
+        conn: sqlite3.Connection,
+        attempt: AlertDeliveryAttempt,
+    ) -> None:
+        conn.execute(
+            """
+            INSERT INTO alert_delivery_attempts (
+                attempt_id, event_id, subscription_id, workspace_id, channel,
+                contact_masked, delivery_status, provider_message, retry_count,
+                next_retry_at, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                attempt.attempt_id,
+                attempt.event_id,
+                attempt.subscription_id,
+                attempt.workspace_id,
+                attempt.channel,
+                attempt.contact_masked,
+                attempt.delivery_status,
+                attempt.provider_message,
+                attempt.retry_count,
+                attempt.next_retry_at,
+                attempt.created_at,
+            ),
+        )
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
@@ -1095,6 +1437,38 @@ def _alert_event_from_row(row: sqlite3.Row) -> AlertDeliveryEvent:
         contact_masked=data["contact_masked"],
         delivery_status=data["delivery_status"],
         message=data["message"],
+        created_at=data["created_at"],
+    )
+
+
+def _alert_channel_from_row(row: sqlite3.Row) -> AlertNotificationChannel:
+    data = dict(row)
+    return AlertNotificationChannel(
+        channel_id=data["channel_id"],
+        workspace_id=data["workspace_id"],
+        channel=data["channel"],
+        display_name=data["display_name"],
+        target_masked=_mask_target(data["target"]),
+        enabled=bool(data["enabled"]),
+        retry_limit=data["retry_limit"],
+        created_at=data["created_at"],
+        updated_at=data["updated_at"],
+    )
+
+
+def _alert_attempt_from_row(row: sqlite3.Row) -> AlertDeliveryAttempt:
+    data = dict(row)
+    return AlertDeliveryAttempt(
+        attempt_id=data["attempt_id"],
+        event_id=data["event_id"],
+        subscription_id=data["subscription_id"],
+        workspace_id=data["workspace_id"],
+        channel=data["channel"],
+        contact_masked=data["contact_masked"],
+        delivery_status=data["delivery_status"],
+        provider_message=data["provider_message"],
+        retry_count=data["retry_count"],
+        next_retry_at=data["next_retry_at"],
         created_at=data["created_at"],
     )
 
@@ -1174,6 +1548,70 @@ def _ensure_column(
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _default_channel_name(channel: str) -> str:
+    labels = {
+        "email": "이메일 알림",
+        "webhook": "웹훅 알림",
+        "sms": "문자 알림",
+    }
+    return labels.get(channel, channel)
+
+
+def _default_channel_target(channel: str) -> str:
+    if channel == "webhook":
+        return "https://example.com/specpilot-alert-webhook"
+    if channel == "sms":
+        return "sms-outbox://specpilot"
+    return "email-outbox://specpilot"
+
+
+def _dispatch_status(
+    channel: str,
+    config: sqlite3.Row | None,
+    retry_count: int,
+    dry_run: bool,
+    now: str,
+) -> tuple[str, str, str | None]:
+    if dry_run:
+        return "dry_run", f"{channel} 채널 발송 리허설을 완료했습니다.", None
+    if config is None:
+        return (
+            "failed",
+            f"{channel} 채널 설정이 없어 발송하지 못했습니다.",
+            _retry_at(now, 30),
+        )
+    if not bool(config["enabled"]):
+        return (
+            "failed",
+            f"{channel} 채널이 비활성화되어 발송하지 못했습니다.",
+            _retry_at(now, 60),
+        )
+    retry_limit = int(config["retry_limit"])
+    if retry_count > retry_limit + 1:
+        return "failed", f"{channel} 채널 재시도 한도를 초과했습니다.", None
+    target = str(config["target"])
+    if channel == "webhook" and not target.startswith(("http://", "https://")):
+        return "failed", "웹훅 대상 URL이 올바르지 않습니다.", _retry_at(now, 30)
+    return (
+        "sent",
+        f"{channel} 채널 outbox가 알림을 접수했습니다: {_mask_target(target)}",
+        None,
+    )
+
+
+def _retry_at(now: str, minutes: int) -> str:
+    base = datetime.fromisoformat(now)
+    return (base + timedelta(minutes=minutes)).isoformat()
+
+
+def _mask_target(target: str) -> str:
+    if target.startswith(("http://", "https://")):
+        scheme, rest = target.split("://", 1)
+        host = rest.split("/", 1)[0]
+        return f"{scheme}://{host}/***"
+    return _mask_contact(target)
 
 
 def _mask_contact(contact: str) -> str:

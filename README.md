@@ -48,6 +48,7 @@ SpecPilot AI는 최저가 링크만 보여주는 쇼핑 도구가 아닙니다. 
 - 저장 리포트 조회와 가격 알림 구독
 - 저장 리포트 공개 공유 링크 생성과 공개 리포트 페이지
 - 목표가 도달 평가와 발송 큐 이벤트 저장
+- 이메일/웹훅/SMS 알림 채널 설정, 발송 큐 dispatch, 발송 시도/재시도 기록
 - 추천 만족도 피드백, 구매 의향, 선택 후보 저장
 - 베타 신청 리드 저장과 개인정보 마스킹
 - 운영 지표 API
@@ -267,6 +268,40 @@ curl http://127.0.0.1:8000/alerts/events \
   -H "X-SpecPilot-Key: $SPECPILOT_KEY"
 ```
 
+알림 발송 채널 설정:
+
+```bash
+curl -X POST http://127.0.0.1:8000/alerts/channels \
+  -H "Content-Type: application/json" \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY" \
+  -d '{
+    "channel": "email",
+    "display_name": "운영 이메일 outbox",
+    "target": "ops@example.com",
+    "enabled": true,
+    "retry_limit": 3
+  }'
+```
+
+큐 발송 처리:
+
+```bash
+curl -X POST http://127.0.0.1:8000/alerts/dispatch \
+  -H "Content-Type: application/json" \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY" \
+  -d '{
+    "dry_run": false,
+    "limit": 50
+  }'
+```
+
+발송 시도 조회:
+
+```bash
+curl http://127.0.0.1:8000/alerts/deliveries \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY"
+```
+
 ### 사용자 피드백과 베타 신청
 
 분석 결과에 대한 만족도, 구매 의향, 선택 후보, 개선 요청을 저장합니다. 연락처는 원문을 저장하지 않고 마스킹된 값만 보관합니다.
@@ -409,11 +444,12 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 - `share_token`, `shared_at`, `share_views`: 저장 리포트 공개 공유 상태
 - `feedback_count`, `average_satisfaction`, `purchase_intent_rate`: 추천 결과가 실제 구매 판단으로 이어지는지 보는 운영 지표
 - `beta_leads`: 베타 신청 리드 수
+- `alert_channels`, `alert_delivery_attempts`, `sent_alert_deliveries`, `failed_alert_deliveries`: 알림 발송 채널과 dispatch 운영 지표
 
 ## 로컬 저장소
 
-분석 실행, 저장 리포트, 공유 토큰, 가격 알림 구독, 사용자 피드백, 베타 리드는 기본적으로 SQLite에 저장됩니다.
-저장 리포트, 공유 토큰, 알림, 피드백, 리드는 `X-SpecPilot-Key`에서 계산된 워크스페이스 단위로 분리됩니다. 공개 리포트는 공유 토큰이 발급된 단일 리포트만 조회할 수 있습니다.
+분석 실행, 저장 리포트, 공유 토큰, 가격 알림 구독, 알림 채널, 발송 큐, 발송 시도, 사용자 피드백, 베타 리드는 기본적으로 SQLite에 저장됩니다.
+저장 리포트, 공유 토큰, 알림, 발송 채널, 피드백, 리드는 `X-SpecPilot-Key`에서 계산된 워크스페이스 단위로 분리됩니다. 공개 리포트는 공유 토큰이 발급된 단일 리포트만 조회할 수 있습니다.
 
 기본 경로:
 
@@ -482,6 +518,7 @@ make docker-build
 - `/reports/save`, `/reports/{report_id}`, `/alerts/subscribe`, `/ops/metrics`가 동작하는지
 - `/reports/{report_id}/share`, `/public/reports/{share_token}`, `/r/{share_token}`이 공개 공유 리포트를 만들고 해제하는지
 - `/alerts/evaluate`, `/alerts/events`가 목표가 도달 이벤트를 저장하고 격리하는지
+- `/alerts/channels`, `/alerts/dispatch`, `/alerts/deliveries`가 발송 채널 설정, 큐 발송, 발송 시도 기록을 워크스페이스별로 처리하는지
 - `/feedback`, `/beta/leads`가 만족도와 베타 리드를 저장하고 워크스페이스별로 격리하는지
 - `/ops/quality`가 품질 감사와 예상 비용을 워크스페이스별로 반환하는지
 - `/sources/status`, `/sources/collect`, `/admin/reviews`, `/admin/dashboard`가 동작하는지
@@ -517,12 +554,13 @@ GitHub Actions는 `main` push와 PR에서 다음을 실행합니다.
 - 사용자가 입력한 필수 조건과 제외 조건은 후보별 충족 매트릭스로 다시 검증합니다.
 - 구매 타이밍 윈도우는 현재가, 목표가, 적정가 밴드, 쿠폰/재고 변동 리스크를 묶어 지금 결제할지 기다릴지 판단하게 합니다.
 - 구매 실행 패키지는 결제 전 확인, 판매자 문의, 주변 검토 공유까지 한 흐름으로 제공합니다.
+- 목표가 도달 알림은 발송 큐와 채널별 dispatch 시도를 남기고 실패 시 재시도 기준을 함께 저장합니다.
 - 연락처와 이메일 원문은 저장하지 않고 마스킹된 값만 운영 콘솔에 노출합니다.
 - 추천 만족도와 구매 의향은 모델 개선 신호로 쓰되 추천 순위에는 즉시 반영하지 않습니다.
 
 ## 다음 제품화 과제
 
 - 실제 가격 비교/오픈마켓/공식 스토어 어댑터의 네트워크 커넥터 연결
-- 실제 가격 알림 발송 채널 어댑터 연동
+- 실제 이메일/SMS/웹훅 provider credential 연결과 운영 rate limit 적용
 - LangSmith 또는 OpenTelemetry trace 저장
 - 실제 구매 시나리오 베타 테스트
