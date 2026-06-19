@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_username: str = "neo4j"
-    neo4j_password: str = "ontology-studio-password"
+    neo4j_password: str = "specpilot-password"
     neo4j_database: str = "neo4j"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")

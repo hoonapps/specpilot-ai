@@ -1,0 +1,10 @@
+{
+  "query": "영상 편집과 게임용 데스크톱 200만원 안에서 맞춰줘. QHD 144Hz 모니터를 쓸 거고 업그레이드 여지도 있었으면 좋겠어.",
+  "category": "desktop_pc",
+  "budget_krw": 2000000,
+  "purpose": "Premiere Pro, DaVinci Resolve, QHD gaming",
+  "must_haves": ["QHD 144Hz", "32GB RAM", "업그레이드 여지", "안정적인 파워"],
+  "exclusions": ["중고 부품", "리퍼"],
+  "purchase_timing": "within_30_days",
+  "channels": ["price_compare", "open_market", "official_store"]
+}

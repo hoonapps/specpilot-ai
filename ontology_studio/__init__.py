@@ -1,1 +1,0 @@
-"""Ontology Studio package."""

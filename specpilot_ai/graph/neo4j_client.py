@@ -2,8 +2,8 @@ from collections.abc import Iterable
 
 from neo4j import GraphDatabase
 
-from ontology_studio.core.config import Settings
-from ontology_studio.core.models import OntologySpec
+from specpilot_ai.core.config import Settings
+from specpilot_ai.graph.product_graph import ProductGraphSchema
 
 
 class Neo4jRepository:
@@ -28,20 +28,20 @@ class Neo4jRepository:
         self._driver.verify_connectivity()
         return True
 
-    def ontology_preview(self, ontology: OntologySpec) -> list[str]:
-        lines = [f"Domain: {ontology.domain}"]
-        lines.extend(f"(:{node.label} {{{node.key_property}}})" for node in ontology.nodes)
+    def graph_schema_preview(self, schema: ProductGraphSchema) -> list[str]:
+        lines = ["Domain: pc_laptop_purchase_decision"]
+        lines.extend(f"(:{node.label} {{{node.key_property}}})" for node in schema.nodes)
         lines.extend(
             f"(:{rel.source})-[:{rel.type}]->(:{rel.target})"
-            for rel in ontology.relationships
+            for rel in schema.relationships
         )
         return lines
 
-    def create_constraints(self, ontology: OntologySpec) -> list[str]:
+    def create_constraints(self, schema: ProductGraphSchema) -> list[str]:
         statements = [
             f"CREATE CONSTRAINT {node.label.lower()}_{node.key_property}_unique IF NOT EXISTS "
             f"FOR (n:{node.label}) REQUIRE n.{node.key_property} IS UNIQUE"
-            for node in ontology.nodes
+            for node in schema.nodes
         ]
         if self.settings.demo_mode:
             return statements

@@ -1,0 +1,10 @@
+{
+  "query": "영상 편집용 노트북 200만원 이하로 비교해줘. 프리미어 프로와 다빈치 리졸브를 쓰고 무게는 1.8kg 근처였으면 좋겠어.",
+  "category": "laptop",
+  "budget_krw": 2000000,
+  "purpose": "Premiere Pro and DaVinci Resolve video editing",
+  "must_haves": ["32GB RAM 선호", "외장 GPU", "휴대 가능"],
+  "exclusions": ["RAM 8GB", "리퍼"],
+  "purchase_timing": "within_30_days",
+  "channels": ["price_compare", "open_market", "official_store"]
+}
