@@ -54,6 +54,13 @@ class ProviderReviewStatus(StrEnum):
     rejected = "rejected"
 
 
+class PurchaseOutcomeStatus(StrEnum):
+    purchased = "purchased"
+    abandoned = "abandoned"
+    delayed = "delayed"
+    returned = "returned"
+
+
 class TrustGrade(StrEnum):
     high = "high"
     medium = "medium"
@@ -754,6 +761,40 @@ class CheckoutReview(BaseModel):
     created_at: str
 
 
+class PurchaseOutcomeRequest(BaseModel):
+    product_id: str | None = None
+    checkout_review_id: str | None = None
+    status: PurchaseOutcomeStatus = PurchaseOutcomeStatus.purchased
+    final_paid_price_krw: int | None = Field(default=None, ge=0)
+    source_channel: str = "manual"
+    reason: str = ""
+    satisfaction: int | None = Field(default=None, ge=1, le=5)
+    order_reference: str = ""
+    notes: str = ""
+
+
+class PurchaseOutcome(BaseModel):
+    outcome_id: str
+    report_id: str
+    trace_id: str
+    workspace_id: str = "demo"
+    product_id: str | None = None
+    model_name: str | None = None
+    checkout_review_id: str | None = None
+    status: PurchaseOutcomeStatus
+    final_paid_price_krw: int | None = None
+    expected_price_krw: int | None = None
+    price_delta_krw: int | None = None
+    source_channel: str = "manual"
+    reason: str = ""
+    satisfaction: int | None = None
+    order_reference_masked: str = ""
+    conversion_value_krw: int = 0
+    learning_signal: str
+    notes: str = ""
+    created_at: str
+
+
 class CompletionReportBatchRequest(BaseModel):
     report_ids: list[str] = Field(default_factory=list)
     channel: str = "email"
@@ -1066,6 +1107,14 @@ class OperationsMetrics(BaseModel):
     checkout_reviews: int = 0
     checkout_blocked_reviews: int = 0
     checkout_ready_reviews: int = 0
+    purchase_outcomes: int = 0
+    completed_purchase_outcomes: int = 0
+    abandoned_purchase_outcomes: int = 0
+    delayed_purchase_outcomes: int = 0
+    returned_purchase_outcomes: int = 0
+    purchase_conversion_rate: float = 0
+    average_final_price_delta_krw: float = 0
+    purchase_outcome_value_krw: int = 0
     source_monitors: int = 0
     source_refresh_runs: int = 0
     source_refresh_failures: int = 0

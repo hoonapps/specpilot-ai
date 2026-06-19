@@ -212,6 +212,11 @@ def admin_page_html() -> str:
         <div class="review-list" id="checkout-reviews"></div>
       </div>
       <div class="panel">
+        <h2>구매 결과</h2>
+        <p>저장 리포트가 실제 구매, 이탈, 지연, 반품으로 이어졌는지 추적합니다.</p>
+        <div class="review-list" id="purchase-outcomes"></div>
+      </div>
+      <div class="panel">
         <h2>완료 리포트 배치</h2>
         <p>저장된 구매 리포트를 템플릿과 수신자 그룹 기준으로 운영 outbox에 발송합니다.</p>
         <input id="completion-target" value="ops@example.com" />
@@ -273,7 +278,8 @@ def admin_page_html() -> str:
         completionGroupResponse,
         completionEngagementResponse,
         completionProviderEventResponse,
-        checkoutReviewResponse
+        checkoutReviewResponse,
+        purchaseOutcomeResponse
       ] = await Promise.all([
         fetch('/admin/dashboard'),
         fetch('/ops/quality'),
@@ -298,7 +304,8 @@ def admin_page_html() -> str:
         fetch('/reports/completion-recipient-groups'),
         fetch('/reports/completion-engagement'),
         fetch('/reports/completion-provider-events'),
-        fetch('/checkout-reviews')
+        fetch('/checkout-reviews'),
+        fetch('/purchase-outcomes')
       ]);
       const data = await response.json();
       const quality = await qualityResponse.json();
@@ -324,6 +331,7 @@ def admin_page_html() -> str:
       const completionEngagement = await completionEngagementResponse.json();
       const completionProviderEvents = await completionProviderEventResponse.json();
       const checkoutReviews = await checkoutReviewResponse.json();
+      const purchaseOutcomes = await purchaseOutcomeResponse.json();
       latestCompletionTemplates = completionTemplates;
       latestCompletionGroups = completionGroups;
       renderMetrics(data.metrics);
@@ -349,6 +357,7 @@ def admin_page_html() -> str:
       renderCompletionEngagement(completionEngagement);
       renderCompletionProviderEvents(completionProviderEvents);
       renderCheckoutReviews(checkoutReviews);
+      renderPurchaseOutcomes(purchaseOutcomes);
       renderTraces(traces);
       renderObservabilityExports(observabilityExports);
     }
@@ -375,6 +384,14 @@ def admin_page_html() -> str:
         ['결제 검수', metrics.checkout_reviews],
         ['결제 보류', metrics.checkout_blocked_reviews],
         ['결제 가능', metrics.checkout_ready_reviews],
+        ['구매 결과', metrics.purchase_outcomes],
+        ['실구매', metrics.completed_purchase_outcomes],
+        ['구매 이탈', metrics.abandoned_purchase_outcomes],
+        ['구매 지연', metrics.delayed_purchase_outcomes],
+        ['반품/취소', metrics.returned_purchase_outcomes],
+        ['실구매 전환', Math.round(metrics.purchase_conversion_rate * 100) + '%'],
+        ['최종가 차이', Math.round(metrics.average_final_price_delta_krw) + '원'],
+        ['전환 금액', Math.round(metrics.purchase_outcome_value_krw) + '원'],
         ['URL 모니터', metrics.source_monitors],
         ['소스 refresh', metrics.source_refresh_runs],
         ['refresh 실패', metrics.source_refresh_failures],
@@ -799,6 +816,34 @@ def admin_page_html() -> str:
             <p>${item.final_recommendation}</p>
             ${missing}
             <ul>${checks}</ul>
+          </article>
+        `;
+      }).join('');
+    }
+
+    function renderPurchaseOutcomes(items) {
+      const root = document.querySelector('#purchase-outcomes');
+      if (!items.length) {
+        root.innerHTML = '<p>아직 구매 결과 기록이 없습니다.</p>';
+        return;
+      }
+      root.innerHTML = items.map((item) => {
+        const tone = ['abandoned', 'returned'].includes(item.status)
+          ? 'danger'
+          : item.status === 'delayed' ? 'warn' : '';
+        const delta = item.price_delta_krw === null || item.price_delta_krw === undefined
+          ? '최종가 미입력'
+          : `${item.price_delta_krw > 0 ? '+' : ''}${item.price_delta_krw.toLocaleString()}원`;
+        const paid = item.final_paid_price_krw
+          ? `${item.final_paid_price_krw.toLocaleString()}원`
+          : '금액 없음';
+        return `
+          <article class="review-item quality-item ${tone}">
+            <span class="kicker">${item.status} · ${new Date(item.created_at).toLocaleString()}</span>
+            <h3>${item.model_name || item.product_id || '선택 후보'} · ${paid}</h3>
+            <p>예상가 대비 ${delta} / 만족도 ${item.satisfaction || '미입력'}</p>
+            <p>${item.learning_signal}</p>
+            <p>${item.reason || item.notes || '상세 메모 없음'}</p>
           </article>
         `;
       }).join('');

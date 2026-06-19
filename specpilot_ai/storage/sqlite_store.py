@@ -57,6 +57,9 @@ from specpilot_ai.core.models import (
     ProviderReliabilityMetric,
     ProviderReviewStatus,
     PublicReport,
+    PurchaseOutcome,
+    PurchaseOutcomeRequest,
+    PurchaseOutcomeStatus,
     QualityDashboard,
     ReportShare,
     ReviewDecision,
@@ -991,6 +994,90 @@ class SpecPilotStore:
                 params,
             ).fetchall()
         return [_checkout_review_from_row(row) for row in rows]
+
+    def create_purchase_outcome_for_workspace(
+        self,
+        workspace_id: str,
+        report_id: str,
+        request: PurchaseOutcomeRequest,
+    ) -> PurchaseOutcome | None:
+        report = self.get_report_for_workspace(workspace_id, report_id)
+        if report is None:
+            return None
+        outcome = _build_purchase_outcome(report, request)
+        if outcome is None:
+            return None
+        with self._connect() as conn:
+            if outcome.checkout_review_id:
+                checkout = conn.execute(
+                    """
+                    SELECT review_id
+                    FROM checkout_reviews
+                    WHERE review_id = ? AND report_id = ? AND workspace_id = ?
+                    """,
+                    (outcome.checkout_review_id, report_id, workspace_id),
+                ).fetchone()
+                if checkout is None:
+                    return None
+            conn.execute(
+                """
+                INSERT INTO purchase_outcomes (
+                    outcome_id, report_id, trace_id, workspace_id, product_id,
+                    model_name, checkout_review_id, status, final_paid_price_krw,
+                    expected_price_krw, price_delta_krw, source_channel, reason,
+                    satisfaction, order_reference_masked, conversion_value_krw,
+                    learning_signal, notes, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    outcome.outcome_id,
+                    outcome.report_id,
+                    outcome.trace_id,
+                    outcome.workspace_id,
+                    outcome.product_id,
+                    outcome.model_name,
+                    outcome.checkout_review_id,
+                    outcome.status.value,
+                    outcome.final_paid_price_krw,
+                    outcome.expected_price_krw,
+                    outcome.price_delta_krw,
+                    outcome.source_channel,
+                    outcome.reason,
+                    outcome.satisfaction,
+                    outcome.order_reference_masked,
+                    outcome.conversion_value_krw,
+                    outcome.learning_signal,
+                    outcome.notes,
+                    outcome.created_at,
+                ),
+            )
+        return outcome
+
+    def list_purchase_outcomes_for_workspace(
+        self,
+        workspace_id: str,
+        report_id: str | None = None,
+        limit: int = 50,
+    ) -> list[PurchaseOutcome]:
+        if report_id:
+            where = "workspace_id = ? AND report_id = ?"
+            params: tuple[object, ...] = (workspace_id, report_id, limit)
+        else:
+            where = "workspace_id = ?"
+            params = (workspace_id, limit)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT *
+                FROM purchase_outcomes
+                WHERE {where}
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+        return [_purchase_outcome_from_row(row) for row in rows]
 
     def share_report_for_workspace(
         self,
@@ -2893,6 +2980,51 @@ class SpecPilotStore:
                 """,
                 params,
             ).fetchone()[0]
+            purchase_outcomes = conn.execute(
+                f"SELECT COUNT(*) FROM purchase_outcomes{where}",
+                params,
+            ).fetchone()[0]
+            completed_purchase_outcomes = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM purchase_outcomes{where}
+                {' AND ' if where else ' WHERE '}status = 'purchased'
+                """,
+                params,
+            ).fetchone()[0]
+            abandoned_purchase_outcomes = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM purchase_outcomes{where}
+                {' AND ' if where else ' WHERE '}status = 'abandoned'
+                """,
+                params,
+            ).fetchone()[0]
+            delayed_purchase_outcomes = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM purchase_outcomes{where}
+                {' AND ' if where else ' WHERE '}status = 'delayed'
+                """,
+                params,
+            ).fetchone()[0]
+            returned_purchase_outcomes = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM purchase_outcomes{where}
+                {' AND ' if where else ' WHERE '}status = 'returned'
+                """,
+                params,
+            ).fetchone()[0]
+            outcome_value_row = conn.execute(
+                f"""
+                SELECT
+                    AVG(price_delta_krw) AS average_delta,
+                    SUM(conversion_value_krw) AS conversion_value
+                FROM purchase_outcomes{where}
+                """,
+                params,
+            ).fetchone()
             triggered_alerts = conn.execute(
                 f"""
                 SELECT COUNT(*)
@@ -2958,6 +3090,25 @@ class SpecPilotStore:
             checkout_reviews=checkout_reviews,
             checkout_blocked_reviews=checkout_blocked_reviews,
             checkout_ready_reviews=checkout_ready_reviews,
+            purchase_outcomes=purchase_outcomes,
+            completed_purchase_outcomes=completed_purchase_outcomes,
+            abandoned_purchase_outcomes=abandoned_purchase_outcomes,
+            delayed_purchase_outcomes=delayed_purchase_outcomes,
+            returned_purchase_outcomes=returned_purchase_outcomes,
+            purchase_conversion_rate=round(
+                (
+                    completed_purchase_outcomes
+                    / purchase_outcomes
+                    if purchase_outcomes
+                    else 0
+                ),
+                4,
+            ),
+            average_final_price_delta_krw=round(
+                float(outcome_value_row["average_delta"] or 0),
+                2,
+            ),
+            purchase_outcome_value_krw=int(outcome_value_row["conversion_value"] or 0),
             source_monitors=source_monitors,
             source_refresh_runs=source_refresh_runs,
             source_refresh_failures=source_refresh_failures,
@@ -3121,6 +3272,31 @@ class SpecPilotStore:
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(report_id) REFERENCES saved_reports(report_id),
                     FOREIGN KEY(trace_id) REFERENCES analysis_runs(trace_id)
+                );
+
+                CREATE TABLE IF NOT EXISTS purchase_outcomes (
+                    outcome_id TEXT PRIMARY KEY,
+                    report_id TEXT NOT NULL,
+                    trace_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL DEFAULT 'demo',
+                    product_id TEXT,
+                    model_name TEXT,
+                    checkout_review_id TEXT,
+                    status TEXT NOT NULL,
+                    final_paid_price_krw INTEGER,
+                    expected_price_krw INTEGER,
+                    price_delta_krw INTEGER,
+                    source_channel TEXT NOT NULL DEFAULT 'manual',
+                    reason TEXT NOT NULL DEFAULT '',
+                    satisfaction INTEGER,
+                    order_reference_masked TEXT NOT NULL DEFAULT '',
+                    conversion_value_krw INTEGER NOT NULL DEFAULT 0,
+                    learning_signal TEXT NOT NULL DEFAULT '',
+                    notes TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(report_id) REFERENCES saved_reports(report_id),
+                    FOREIGN KEY(trace_id) REFERENCES analysis_runs(trace_id),
+                    FOREIGN KEY(checkout_review_id) REFERENCES checkout_reviews(review_id)
                 );
 
                 CREATE TABLE IF NOT EXISTS alert_subscriptions (
@@ -3439,6 +3615,12 @@ class SpecPilotStore:
                     ON checkout_reviews(workspace_id, created_at);
                 CREATE INDEX IF NOT EXISTS idx_checkout_reviews_report
                     ON checkout_reviews(report_id, created_at);
+                CREATE INDEX IF NOT EXISTS idx_purchase_outcomes_workspace
+                    ON purchase_outcomes(workspace_id, created_at);
+                CREATE INDEX IF NOT EXISTS idx_purchase_outcomes_report
+                    ON purchase_outcomes(report_id, created_at);
+                CREATE INDEX IF NOT EXISTS idx_purchase_outcomes_status
+                    ON purchase_outcomes(workspace_id, status, created_at);
                 CREATE INDEX IF NOT EXISTS idx_alerts_trace
                     ON alert_subscriptions(trace_id);
                 CREATE INDEX IF NOT EXISTS idx_source_review_status
@@ -4021,6 +4203,111 @@ def _checkout_review_from_row(row: sqlite3.Row) -> CheckoutReview:
         final_recommendation=data["final_recommendation"],
         notes=data["notes"],
         created_at=data["created_at"],
+    )
+
+
+def _purchase_outcome_from_row(row: sqlite3.Row) -> PurchaseOutcome:
+    data = dict(row)
+    return PurchaseOutcome(
+        outcome_id=data["outcome_id"],
+        report_id=data["report_id"],
+        trace_id=data["trace_id"],
+        workspace_id=data["workspace_id"],
+        product_id=data["product_id"],
+        model_name=data["model_name"],
+        checkout_review_id=data["checkout_review_id"],
+        status=PurchaseOutcomeStatus(data["status"]),
+        final_paid_price_krw=data["final_paid_price_krw"],
+        expected_price_krw=data["expected_price_krw"],
+        price_delta_krw=data["price_delta_krw"],
+        source_channel=data["source_channel"],
+        reason=data["reason"],
+        satisfaction=data["satisfaction"],
+        order_reference_masked=data["order_reference_masked"],
+        conversion_value_krw=data["conversion_value_krw"],
+        learning_signal=data["learning_signal"],
+        notes=data["notes"],
+        created_at=data["created_at"],
+    )
+
+
+def _build_purchase_outcome(
+    report: SavedReportDetail,
+    request: PurchaseOutcomeRequest,
+) -> PurchaseOutcome | None:
+    purchase = report.response.report
+    product_id = request.product_id or purchase.final_pick_id
+    recommendation = next(
+        (
+            item
+            for item in purchase.top_recommendations
+            if item.product.id == product_id
+        ),
+        None,
+    )
+    if recommendation is None:
+        return None
+    expected_price = recommendation.price.effective_price_krw
+    final_price = request.final_paid_price_krw
+    price_delta = (
+        final_price - expected_price
+        if final_price is not None and expected_price is not None
+        else None
+    )
+    conversion_value = (
+        final_price
+        if request.status == PurchaseOutcomeStatus.purchased and final_price is not None
+        else 0
+    )
+    return PurchaseOutcome(
+        outcome_id=f"outcome_{uuid4().hex[:12]}",
+        report_id=report.report_id,
+        trace_id=report.trace_id,
+        workspace_id=report.workspace_id,
+        product_id=recommendation.product.id,
+        model_name=recommendation.product.model_name,
+        checkout_review_id=request.checkout_review_id,
+        status=request.status,
+        final_paid_price_krw=final_price,
+        expected_price_krw=expected_price,
+        price_delta_krw=price_delta,
+        source_channel=request.source_channel.strip() or "manual",
+        reason=request.reason,
+        satisfaction=request.satisfaction,
+        order_reference_masked=_mask_order_reference(request.order_reference),
+        conversion_value_krw=conversion_value,
+        learning_signal=_purchase_learning_signal(request, price_delta),
+        notes=request.notes,
+        created_at=_now(),
+    )
+
+
+def _purchase_learning_signal(
+    request: PurchaseOutcomeRequest,
+    price_delta: int | None,
+) -> str:
+    if request.status == PurchaseOutcomeStatus.purchased:
+        if price_delta is not None and price_delta > 50_000:
+            return (
+                "구매는 완료됐지만 최종가가 리포트 예상가보다 높아 "
+                "가격 신선도 개선이 필요합니다."
+            )
+        if request.satisfaction is not None and request.satisfaction <= 3:
+            return "구매는 완료됐지만 만족도가 낮아 추천 근거와 사후 기대값 설명을 점검해야 합니다."
+        return "추천이 실제 구매로 전환됐습니다. 유사 조건 추천 랭킹의 긍정 신호입니다."
+    if request.status == PurchaseOutcomeStatus.abandoned:
+        return (
+            request.reason.strip()
+            or "사용자가 구매를 포기했습니다. 가격, 신뢰, 옵션 불확실성 원인을 확인해야 합니다."
+        )
+    if request.status == PurchaseOutcomeStatus.delayed:
+        return (
+            request.reason.strip()
+            or "사용자가 구매를 연기했습니다. 가격 알림과 재검토 리마인더 연결이 필요합니다."
+        )
+    return (
+        request.reason.strip()
+        or "구매 후 반품/취소가 발생했습니다. 호환성, 배송, 기대 성능 차이를 회귀 분석해야 합니다."
     )
 
 
@@ -4950,6 +5237,12 @@ def _launch_readiness_score(metrics: OperationsMetrics, quality: QualityDashboar
         + metrics.average_satisfaction * 8
         + metrics.purchase_intent_rate * 25,
     )
+    outcome_signal = min(
+        100.0,
+        metrics.purchase_outcomes * 10
+        + metrics.completed_purchase_outcomes * 18
+        + metrics.purchase_conversion_rate * 30,
+    )
     lead = min(100.0, metrics.beta_leads * 10)
     quality_score = max(
         0.0,
@@ -4961,7 +5254,8 @@ def _launch_readiness_score(metrics: OperationsMetrics, quality: QualityDashboar
         activation * 0.18
         + sharing * 0.16
         + retention * 0.12
-        + feedback * 0.18
+        + feedback * 0.12
+        + outcome_signal * 0.06
         + lead * 0.12
         + quality_score * 0.24
     )
@@ -5270,3 +5564,12 @@ def _mask_contact(contact: str) -> str:
     if len(contact) <= 4:
         return "***"
     return f"{contact[:3]}***{contact[-2:]}"
+
+
+def _mask_order_reference(reference: str) -> str:
+    normalized = reference.strip()
+    if not normalized:
+        return ""
+    if len(normalized) <= 6:
+        return "***"
+    return f"{normalized[:3]}***{normalized[-3:]}"

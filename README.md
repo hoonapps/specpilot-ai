@@ -43,6 +43,7 @@ SpecPilot AI는 최저가 링크만 보여주는 쇼핑 도구가 아닙니다. 
 - 구매 타이밍 윈도우: 후보별 적정가 밴드, 목표가, 변동 리스크, 결제 트리거
 - 구매 실행 패키지: 결제 전 실행 단계, 판매자 확인 질문, 공유 검토 문구
 - 결제 전 검수: 저장 리포트 기준 최종 결제 금액, 옵션/사양, 판매자 답변, 리스크 승인 상태를 기록하고 결제 가능/보류 판정
+- 구매 결과 추적: 저장 리포트가 실제 구매, 이탈, 지연, 반품/취소로 이어졌는지 기록하고 최종 결제 금액 차이와 학습 신호 집계
 - 출처 신뢰도, 캐시 만료 기준, 제휴 고지 정책
 - Agent trace 조회와 SQLite span 저장
 - Observability export outbox: trace span과 품질 감사 payload를 OpenTelemetry/LangSmith 연동 전 큐로 저장하고 dispatch/retry 상태 추적
@@ -275,6 +276,39 @@ curl http://127.0.0.1:8000/reports/report_xxxxxxxxxxxx/checkout-reviews \
 
 ```bash
 curl http://127.0.0.1:8000/checkout-reviews \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY"
+```
+
+구매 결과 기록:
+
+```bash
+curl -X POST http://127.0.0.1:8000/reports/report_xxxxxxxxxxxx/purchase-outcomes \
+  -H "Content-Type: application/json" \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY" \
+  -d '{
+    "product_id": "desktop_creator_4070",
+    "checkout_review_id": "checkout_xxxxxxxxxxxx",
+    "status": "purchased",
+    "final_paid_price_krw": 1990000,
+    "source_channel": "checkout_review",
+    "reason": "최종 주문 완료",
+    "satisfaction": 5,
+    "order_reference": "ORDER-2026-000123",
+    "notes": "주문 화면 캡처 보관"
+  }'
+```
+
+구매 결과 이력 조회:
+
+```bash
+curl http://127.0.0.1:8000/reports/report_xxxxxxxxxxxx/purchase-outcomes \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY"
+```
+
+워크스페이스 전체 구매 결과:
+
+```bash
+curl http://127.0.0.1:8000/purchase-outcomes \
   -H "X-SpecPilot-Key: $SPECPILOT_KEY"
 ```
 
@@ -846,6 +880,7 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 - `/ops/observability/dispatch`: queued/failed observability export를 OpenTelemetry/LangSmith exporter outbox로 dispatch하고 성공/실패/재시도 상태를 저장
 - `share_token`, `shared_at`, `share_views`: 저장 리포트 공개 공유 상태
 - `/reports/completion-templates`, `/reports/completion-recipient-groups`, `/reports/completion-preview`, `/reports/completion-batches`, `/reports/completion-engagement`, `/reports/completion-provider-events`, `/reports/completion-deliveries/provider-webhooks`, `/t/o/{tracking_token}.png`, `/t/c/{tracking_token}`: 완료 리포트 템플릿, 수신자 그룹, unsubscribe 제외, 발송 전 렌더링 미리보기, batch와 개별 delivery 성공/실패/재시도/열람/클릭/반송/신고/수신 제외 상태, provider 삽입용 공개 추적 픽셀/클릭 리다이렉트
+- `purchase_outcomes`, `completed_purchase_outcomes`, `purchase_conversion_rate`, `average_final_price_delta_krw`, `purchase_outcome_value_krw`: 실제 구매 결과와 최종 결제 금액 차이를 보는 운영 지표
 - `feedback_count`, `average_satisfaction`, `purchase_intent_rate`: 추천 결과가 실제 구매 판단으로 이어지는지 보는 운영 지표
 - `beta_leads`: 베타 신청 리드 수
 - `alert_channels`, `alert_delivery_attempts`, `sent_alert_deliveries`, `failed_alert_deliveries`: 알림 발송 채널과 dispatch 운영 지표
@@ -922,6 +957,8 @@ make docker-build
 - `/analyze`, `/alerts/preview`, `/traces/{trace_id}`가 동작하는지
 - `/reports/save`, `/reports/{report_id}`, `/alerts/subscribe`, `/ops/metrics`가 동작하는지
 - `/reports/{report_id}/share`, `/public/reports/{share_token}`, `/r/{share_token}`이 공개 공유 리포트를 만들고 해제하는지
+- `/reports/{report_id}/checkout-review`, `/reports/{report_id}/checkout-reviews`, `/checkout-reviews`가 결제 전 검수와 워크스페이스 격리를 처리하는지
+- `/reports/{report_id}/purchase-outcomes`, `/purchase-outcomes`가 실제 구매, 이탈, 지연, 반품/취소 결과와 최종가 차이를 저장하고 워크스페이스별로 격리하는지
 - `/reports/completion-preview`, `/reports/completion-batches`, `/reports/completion-engagement`, `/reports/completion-provider-events`, `/reports/completion-deliveries/provider-webhooks`, `/t/o/{tracking_token}.png`, `/t/c/{tracking_token}`가 완료 리포트 미리보기, batch, delivery, 공개 추적 픽셀/클릭 리다이렉트, provider webhook, 열람/클릭/반송/신고/수신 제외 상태를 저장하고 워크스페이스별로 격리하는지
 - `/alerts/evaluate`, `/alerts/events`가 목표가 도달 이벤트를 저장하고 격리하는지
 - `/alerts/channels`, `/alerts/dispatch`, `/alerts/deliveries`가 발송 채널 설정, 큐 발송, 발송 시도 기록을 워크스페이스별로 처리하는지
@@ -971,6 +1008,7 @@ GitHub Actions는 `main` push와 PR에서 다음을 실행합니다.
 - 사용자가 입력한 필수 조건과 제외 조건은 후보별 충족 매트릭스로 다시 검증합니다.
 - 구매 타이밍 윈도우는 현재가, 목표가, 적정가 밴드, 쿠폰/재고 변동 리스크를 묶어 지금 결제할지 기다릴지 판단하게 합니다.
 - 구매 실행 패키지는 결제 전 확인, 판매자 문의, 주변 검토 공유까지 한 흐름으로 제공합니다.
+- 구매 결과는 주문번호 원문을 저장하지 않고 마스킹하며, 실제 구매/이탈/지연/반품 신호와 최종가 차이를 모델 개선과 운영 판단에 사용합니다.
 - 완료 리포트 배치는 저장된 구매 리포트를 운영 채널 outbox로 묶어 전달하고, 템플릿, 수신자 그룹, unsubscribe 제외, 발송 전 렌더링 미리보기, provider 삽입용 공개 추적 픽셀/클릭 리다이렉트, provider webhook 기반 반송/신고/수신 제외, batch별 성공/실패/재시도/열람/클릭 상태를 남깁니다.
 - 목표가 도달 알림은 발송 큐와 채널별 dispatch 시도를 남기고 실패 시 재시도 기준을 함께 저장합니다.
 - 연락처와 이메일 원문은 저장하지 않고 마스킹된 값만 운영 콘솔에 노출합니다.

@@ -83,6 +83,8 @@ def test_admin_page_exposes_review_console() -> None:
     assert "provider webhook 이벤트" in response.text
     assert "결제 전 검수" in response.text
     assert "checkout-reviews" in response.text
+    assert "구매 결과" in response.text
+    assert "purchase-outcomes" in response.text
     assert "품질/비용 감사" in response.text
     assert "품질 회귀 모니터" in response.text
     assert "사용자 피드백" in response.text
@@ -314,6 +316,66 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
         for item in all_checkout_reviews.json()
     )
 
+    purchase_outcome = client.post(
+        f"/reports/{saved_payload['report_id']}/purchase-outcomes",
+        headers=WORKSPACE_A,
+        json={
+            "product_id": top_recommendation["product"]["id"],
+            "checkout_review_id": acknowledged_payload["review_id"],
+            "status": "purchased",
+            "final_paid_price_krw": top_recommendation["price"]["effective_price_krw"] + 10_000,
+            "source_channel": "checkout_review",
+            "reason": "pytest 실제 구매 완료",
+            "satisfaction": 5,
+            "order_reference": "ORDER-2026-000123",
+            "notes": "pytest 구매 결과",
+        },
+    )
+    assert purchase_outcome.status_code == 200
+    outcome_payload = purchase_outcome.json()
+    assert outcome_payload["report_id"] == saved_payload["report_id"]
+    assert outcome_payload["trace_id"] == trace_id
+    assert outcome_payload["workspace_id"] == saved_payload["workspace_id"]
+    assert outcome_payload["product_id"] == top_recommendation["product"]["id"]
+    assert outcome_payload["checkout_review_id"] == acknowledged_payload["review_id"]
+    assert outcome_payload["status"] == "purchased"
+    assert (
+        outcome_payload["expected_price_krw"]
+        == top_recommendation["price"]["effective_price_krw"]
+    )
+    assert outcome_payload["price_delta_krw"] == 10_000
+    assert outcome_payload["conversion_value_krw"] == outcome_payload["final_paid_price_krw"]
+    assert outcome_payload["order_reference_masked"] == "ORD***123"
+    assert "실제 구매" in outcome_payload["learning_signal"]
+
+    delayed_outcome = client.post(
+        f"/reports/{saved_payload['report_id']}/purchase-outcomes",
+        headers=WORKSPACE_A,
+        json={
+            "product_id": top_recommendation["product"]["id"],
+            "status": "delayed",
+            "source_channel": "follow_up",
+            "reason": "다음 할인까지 대기",
+            "satisfaction": 4,
+        },
+    )
+    assert delayed_outcome.status_code == 200
+    assert delayed_outcome.json()["status"] == "delayed"
+    assert delayed_outcome.json()["conversion_value_krw"] == 0
+
+    report_outcomes = client.get(
+        f"/reports/{saved_payload['report_id']}/purchase-outcomes",
+        headers=WORKSPACE_A,
+    )
+    assert report_outcomes.status_code == 200
+    assert len(report_outcomes.json()) >= 2
+
+    all_purchase_outcomes = client.get("/purchase-outcomes", headers=WORKSPACE_A)
+    assert any(
+        item["outcome_id"] == outcome_payload["outcome_id"]
+        for item in all_purchase_outcomes.json()
+    )
+
     isolated_checkout = client.post(
         f"/reports/{saved_payload['report_id']}/checkout-review",
         headers=WORKSPACE_B,
@@ -327,6 +389,31 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
         json={"product_id": "unknown_product"},
     )
     assert invalid_checkout.status_code == 404
+
+    isolated_outcome = client.post(
+        f"/reports/{saved_payload['report_id']}/purchase-outcomes",
+        headers=WORKSPACE_B,
+        json={"product_id": top_recommendation["product"]["id"]},
+    )
+    assert isolated_outcome.status_code == 404
+
+    invalid_outcome = client.post(
+        f"/reports/{saved_payload['report_id']}/purchase-outcomes",
+        headers=WORKSPACE_A,
+        json={"product_id": "unknown_product", "status": "purchased"},
+    )
+    assert invalid_outcome.status_code == 404
+
+    invalid_checkout_outcome = client.post(
+        f"/reports/{saved_payload['report_id']}/purchase-outcomes",
+        headers=WORKSPACE_A,
+        json={
+            "product_id": top_recommendation["product"]["id"],
+            "checkout_review_id": "checkout_missing",
+            "status": "purchased",
+        },
+    )
+    assert invalid_checkout_outcome.status_code == 404
 
     share = client.post(
         f"/reports/{saved_payload['report_id']}/share",
@@ -376,6 +463,15 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
     assert metrics_after_share["public_share_views"] >= 2
     assert metrics_after_share["checkout_reviews"] >= 2
     assert metrics_after_share["checkout_blocked_reviews"] >= 1
+    assert metrics_after_share["purchase_outcomes"] >= 2
+    assert metrics_after_share["completed_purchase_outcomes"] >= 1
+    assert metrics_after_share["delayed_purchase_outcomes"] >= 1
+    assert metrics_after_share["purchase_conversion_rate"] > 0
+    assert metrics_after_share["average_final_price_delta_krw"] >= 0
+    assert (
+        metrics_after_share["purchase_outcome_value_krw"]
+        >= outcome_payload["final_paid_price_krw"]
+    )
 
     completion_dry_run = client.post(
         "/reports/completion-batches",

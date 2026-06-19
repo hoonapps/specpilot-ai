@@ -59,6 +59,8 @@ from specpilot_ai.core.models import (
     PriceAlertPlan,
     ProductBrief,
     PublicReport,
+    PurchaseOutcome,
+    PurchaseOutcomeRequest,
     QualityDashboard,
     ReportShare,
     ReviewDecision,
@@ -571,6 +573,55 @@ def list_checkout_reviews(
     workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
 ) -> list[CheckoutReview]:
     return _store().list_checkout_reviews_for_workspace(
+        workspace.workspace_id,
+        limit=limit,
+    )
+
+
+@app.post("/reports/{report_id}/purchase-outcomes", response_model=PurchaseOutcome)
+def create_purchase_outcome(
+    report_id: str,
+    request: PurchaseOutcomeRequest,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> PurchaseOutcome:
+    outcome = _store().create_purchase_outcome_for_workspace(
+        workspace.workspace_id,
+        report_id,
+        request,
+    )
+    if outcome is None:
+        raise HTTPException(
+            status_code=404,
+            detail="purchase outcome을 만들 리포트 또는 후보를 찾을 수 없습니다.",
+        )
+    return outcome
+
+
+@app.get("/reports/{report_id}/purchase-outcomes", response_model=list[PurchaseOutcome])
+def list_report_purchase_outcomes(
+    report_id: str,
+    limit: int = 50,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> list[PurchaseOutcome]:
+    report = _store().get_report_for_workspace(workspace.workspace_id, report_id)
+    if report is None:
+        raise HTTPException(
+            status_code=404,
+            detail="purchase outcome을 조회할 리포트를 찾을 수 없습니다.",
+        )
+    return _store().list_purchase_outcomes_for_workspace(
+        workspace.workspace_id,
+        report_id=report_id,
+        limit=limit,
+    )
+
+
+@app.get("/purchase-outcomes", response_model=list[PurchaseOutcome])
+def list_purchase_outcomes(
+    limit: int = 50,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> list[PurchaseOutcome]:
+    return _store().list_purchase_outcomes_for_workspace(
         workspace.workspace_id,
         limit=limit,
     )
