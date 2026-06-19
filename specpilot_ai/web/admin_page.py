@@ -127,19 +127,37 @@ def admin_page_html() -> str:
       <p>분석별 품질 점수, 예상 비용, 공개 전 차단 사유를 확인합니다.</p>
       <div class="quality-list" id="quality"></div>
     </section>
+    <section class="grid top-grid" style="margin-top:14px">
+      <div class="panel">
+        <h2>사용자 피드백</h2>
+        <p>추천 만족도, 구매 의향, 선택 후보와 개선 요청을 확인합니다.</p>
+        <div class="review-list" id="feedback"></div>
+      </div>
+      <div class="panel">
+        <h2>베타 리드</h2>
+        <p>공개 전 베타 신청자와 사용 맥락을 추적합니다.</p>
+        <div class="review-list" id="beta-leads"></div>
+      </div>
+    </section>
   </main>
   <script>
     async function loadDashboard() {
-      const [response, qualityResponse] = await Promise.all([
+      const [response, qualityResponse, feedbackResponse, betaLeadResponse] = await Promise.all([
         fetch('/admin/dashboard'),
-        fetch('/ops/quality')
+        fetch('/ops/quality'),
+        fetch('/feedback'),
+        fetch('/beta/leads')
       ]);
       const data = await response.json();
       const quality = await qualityResponse.json();
+      const feedback = await feedbackResponse.json();
+      const betaLeads = await betaLeadResponse.json();
       renderMetrics(data.metrics);
       renderSources(data.adapter_statuses);
       renderReviews(data.pending_reviews);
       renderQuality(quality);
+      renderFeedback(feedback);
+      renderBetaLeads(betaLeads);
     }
 
     function renderMetrics(metrics) {
@@ -151,7 +169,11 @@ def admin_page_html() -> str:
         ['트리거', metrics.triggered_alerts],
         ['품질', metrics.average_quality_score],
         ['예상비용', Math.round(metrics.estimated_cost_krw) + '원'],
-        ['전환 준비율', Math.round(metrics.conversion_ready_rate * 100) + '%']
+        ['전환 준비율', Math.round(metrics.conversion_ready_rate * 100) + '%'],
+        ['피드백', metrics.feedback_count],
+        ['베타 리드', metrics.beta_leads],
+        ['만족도', metrics.average_satisfaction],
+        ['구매 의향', Math.round(metrics.purchase_intent_rate * 100) + '%']
       ].map(([label, value]) => `<div class="card"><span class="kicker">${label}</span><div class="metric">${value}</div></div>`).join('');
     }
 
@@ -205,6 +227,39 @@ def admin_page_html() -> str:
           </article>
         `;
       }).join('');
+    }
+
+    function renderFeedback(items) {
+      const root = document.querySelector('#feedback');
+      if (!items.length) {
+        root.innerHTML = '<p>아직 사용자 피드백이 없습니다.</p>';
+        return;
+      }
+      root.innerHTML = items.map((item) => `
+        <article class="review-item">
+          <span class="kicker">${item.trace_id}</span>
+          <h3>만족도 ${item.rating}점 · 구매 의향 ${item.purchase_intent ? '있음' : '없음'}</h3>
+          <p>${item.reason || '상세 사유 없음'}</p>
+          <p>선택 후보: ${item.selected_product_id || '미선택'} / 연락처: ${item.contact_masked || '없음'}</p>
+          <p>개선 요청: ${item.improvement_requests.length ? item.improvement_requests.join(', ') : '없음'}</p>
+        </article>
+      `).join('');
+    }
+
+    function renderBetaLeads(items) {
+      const root = document.querySelector('#beta-leads');
+      if (!items.length) {
+        root.innerHTML = '<p>아직 베타 신청자가 없습니다.</p>';
+        return;
+      }
+      root.innerHTML = items.map((item) => `
+        <article class="review-item">
+          <span class="kicker">${item.persona} · ${item.company_size}</span>
+          <h3>${item.email_masked}</h3>
+          <p>${item.use_case}</p>
+          <p>동의: ${item.contact_consent ? '예' : '아니오'} / 유입: ${item.source}</p>
+        </article>
+      `).join('');
     }
 
     async function decide(reviewId, status) {

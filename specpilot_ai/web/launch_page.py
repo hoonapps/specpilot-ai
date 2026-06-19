@@ -301,6 +301,8 @@ def launch_page_html() -> str:
             <button class="primary mini-action" type="button" id="save-report">리포트 저장</button>
             <button class="secondary mini-action" type="button" id="subscribe-alert">1순위 가격 알림</button>
             <button class="secondary mini-action" type="button" id="test-alert">목표가 도달 테스트</button>
+            <button class="secondary mini-action" type="button" id="submit-feedback">피드백 보내기</button>
+            <button class="secondary mini-action" type="button" id="join-beta">베타 신청</button>
             <button class="secondary mini-action" type="button" id="view-metrics">운영 지표</button>
           </div>
         </div>
@@ -339,6 +341,12 @@ def launch_page_html() -> str:
         </section>
       `;
       bindResultActions();
+    }
+
+    function selectedProductId() {
+      const top = latestAnalysis?.report?.top_recommendations?.[0]?.product?.product_id;
+      const alertProduct = latestAnalysis?.report?.price_alerts?.[0]?.product_id;
+      return top || alertProduct || null;
     }
 
     function bindResultActions() {
@@ -392,10 +400,45 @@ def launch_page_html() -> str:
         alert(`평가 ${evaluated.evaluated_count}건 / 발송 큐 ${evaluated.triggered_count}건${latest ? ' / 최근 이벤트 ' + latest.event_id : ''}`);
       });
 
+      document.querySelector('#submit-feedback')?.addEventListener('click', async () => {
+        const response = await fetch('/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            trace_id: latestAnalysis.graph_trace_id,
+            rating: 5,
+            purchase_intent: true,
+            selected_product_id: selectedProductId(),
+            reason: '웹 UI 추천 결과와 가격 알림 조건이 구매 판단에 충분합니다.',
+            improvement_requests: ['실제 판매 링크 연동', '재고 변동 알림'],
+            contact: 'buyer@example.com'
+          })
+        });
+        const feedback = await response.json();
+        alert(`피드백 저장 완료: ${feedback.feedback_id}`);
+      });
+
+      document.querySelector('#join-beta')?.addEventListener('click', async () => {
+        const response = await fetch('/beta/leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: 'beta@example.com',
+            persona: document.querySelector('#category').value === 'laptop' ? 'mobile_creator' : 'pc_buyer',
+            use_case: document.querySelector('#query').value,
+            company_size: 'personal',
+            contact_consent: true,
+            source: 'launch_page'
+          })
+        });
+        const lead = await response.json();
+        alert(`베타 신청 완료: ${lead.lead_id}`);
+      });
+
       document.querySelector('#view-metrics')?.addEventListener('click', async () => {
         const response = await fetch('/ops/metrics');
         const metrics = await response.json();
-        alert(`분석 ${metrics.analysis_runs}건 / 저장 ${metrics.saved_reports}건 / 알림 ${metrics.alert_subscriptions}건 / 발송 이벤트 ${metrics.alert_events}건`);
+        alert(`분석 ${metrics.analysis_runs}건 / 저장 ${metrics.saved_reports}건 / 알림 ${metrics.alert_subscriptions}건 / 발송 이벤트 ${metrics.alert_events}건 / 피드백 ${metrics.feedback_count}건 / 베타 ${metrics.beta_leads}건`);
       });
     }
 
