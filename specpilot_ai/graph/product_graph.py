@@ -39,6 +39,12 @@ def pc_purchase_graph_schema() -> ProductGraphSchema:
             GraphNode(label="Review", key_property="review_id", description="사용자/전문 리뷰"),
             GraphNode(label="Benchmark", key_property="benchmark_id", description="성능 근거"),
             GraphNode(label="CompatibilitySignal", key_property="name", description="호환성 신호"),
+            GraphNode(label="PriceAlert", key_property="alert_id", description="목표가 알림 조건"),
+            GraphNode(
+                label="AnalysisTrace",
+                key_property="trace_id",
+                description="Agent 실행 추적",
+            ),
         ],
         relationships=[
             GraphRelationship(
@@ -89,6 +95,30 @@ def pc_purchase_graph_schema() -> ProductGraphSchema:
                 target="CompatibilitySignal",
                 description="소켓, 파워, 케이스 간섭 같은 호환성 검증 신호를 연결한다.",
             ),
+            GraphRelationship(
+                type="CHECKED_BY",
+                source="Laptop",
+                target="CompatibilitySignal",
+                description="RAM, GPU, 무게, 배터리 같은 노트북 검증 신호를 연결한다.",
+            ),
+            GraphRelationship(
+                type="WATCHED_BY",
+                source="Offer",
+                target="PriceAlert",
+                description="가격 조건이 목표가 알림으로 추적된다.",
+            ),
+            GraphRelationship(
+                type="PRODUCED",
+                source="AnalysisTrace",
+                target="Offer",
+                description="분석 실행이 비교 대상 오퍼를 생성하거나 조회했다.",
+            ),
+            GraphRelationship(
+                type="PRODUCED",
+                source="AnalysisTrace",
+                target="CompatibilitySignal",
+                description="분석 실행이 호환성 검증 신호를 생성했다.",
+            ),
         ],
         constraints=[
             "Build.normalized_model must be unique",
@@ -96,5 +126,7 @@ def pc_purchase_graph_schema() -> ProductGraphSchema:
             "Component.part_no must be unique",
             "Offer.offer_id must be unique",
             "Review.review_id must be unique",
+            "PriceAlert.alert_id must be unique",
+            "AnalysisTrace.trace_id must be unique",
         ],
     )

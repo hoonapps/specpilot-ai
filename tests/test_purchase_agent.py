@@ -53,6 +53,9 @@ def test_pc_purchase_graph_schema_has_component_and_compatibility_relationships(
 
     assert "Build" in labels
     assert "Component" in labels
+    assert "PriceAlert" in labels
+    assert "AnalysisTrace" in labels
     assert "USES" in rel_types
     assert "CHECKED_BY" in rel_types
     assert "HAS_BENCHMARK" in rel_types
+    assert "WATCHED_BY" in rel_types
