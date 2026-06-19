@@ -20,7 +20,12 @@ def test_desktop_pc_analysis_returns_top_three_and_compatibility_notes() -> None
     assert response.steps[-1] == AgentStep.report_writer
     assert len(response.report.top_recommendations) == 3
     assert len(response.report.excluded_products) == 2
+    assert len(response.report.comparison_table) == 5
+    assert response.report.price_alerts
+    assert response.report.benchmark_evidence
+    assert response.trace_events
     assert response.report.compatibility_notes
+    assert response.report.final_pick_id == response.report.top_recommendations[0].product.id
     assert response.graph_trace_id.startswith("trace_")
 
 
@@ -37,7 +42,8 @@ def test_laptop_analysis_is_supported() -> None:
 
     assert response.criteria.category == Category.laptop
     assert response.report.top_recommendations[0].product.category == Category.laptop
-    assert response.report.top_recommendations[0].score.compatibility >= 90
+    assert response.report.top_recommendations[0].compatibility_checks
+    assert response.report.top_recommendations[0].benchmark_evidence
 
 
 def test_pc_purchase_graph_schema_has_component_and_compatibility_relationships() -> None:
