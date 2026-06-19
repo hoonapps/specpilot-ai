@@ -23,6 +23,7 @@ from specpilot_ai.core.models import (
     ProductCriteriaMatch,
     PurchaseCriteria,
     PurchaseDecision,
+    PurchaseExecutionPlan,
     PurchaseReport,
     Recommendation,
     ReviewInsight,
@@ -423,6 +424,12 @@ def report_writer(state: PurchaseState) -> PurchaseState:
     )
     scenario_options = _scenario_options(ranked[:5], products, prices, reviews)
     criteria_matches = _criteria_matches(ranked[:5], products, state["criteria"])
+    execution_plan = _execution_plan(
+        recommendations,
+        purchase_decision,
+        price_alerts,
+        criteria_matches,
+    )
     state["report"] = PurchaseReport(
         summary=summary_chain.invoke(
             {
@@ -451,6 +458,7 @@ def report_writer(state: PurchaseState) -> PurchaseState:
         purchase_decision=purchase_decision,
         scenario_options=scenario_options,
         criteria_matches=criteria_matches,
+        execution_plan=execution_plan,
         final_pick_id=recommendations[0].product.id if recommendations else None,
     )
     _trace(
@@ -826,6 +834,104 @@ def _criteria_matches(
             )
         )
     return matches
+
+
+def _execution_plan(
+    recommendations: list[Recommendation],
+    decision: PurchaseDecision,
+    price_alerts: list[PriceAlertPlan],
+    criteria_matches: list[ProductCriteriaMatch],
+) -> PurchaseExecutionPlan:
+    if not recommendations:
+        return PurchaseExecutionPlan(
+            headline="비교 가능한 후보를 더 모아야 합니다.",
+            primary_action="예산, 목적, 필수 조건을 구체화한 뒤 다시 분석하세요.",
+            urgency="분석 보강",
+            price_recheck_required=True,
+            checkout_steps=["요청 조건을 보강하고 후보 수집을 다시 실행하세요."],
+            seller_questions=["판매 페이지 옵션명과 실제 구성표를 확인할 수 있나요?"],
+            share_message="비교 가능한 후보가 부족해 조건을 보강한 뒤 다시 검토해야 합니다.",
+        )
+
+    top = recommendations[0]
+    top_alert = next(
+        (alert for alert in price_alerts if alert.product_id == top.product.id),
+        price_alerts[0] if price_alerts else None,
+    )
+    criteria_match = next(
+        (item for item in criteria_matches if item.product_id == top.product.id),
+        None,
+    )
+    blocker_count = criteria_match.blocker_count if criteria_match else 0
+    warning_count = criteria_match.warning_count if criteria_match else 0
+    price_gap = (
+        top.price.effective_price_krw - top_alert.target_price_krw
+        if top_alert is not None
+        else 0
+    )
+    price_recheck_required = decision.verdict != "buy_now" or price_gap > 0
+
+    if decision.verdict == "buy_now" and blocker_count == 0:
+        urgency = "오늘 결제 가능"
+        primary_action = "최종 판매 페이지에서 옵션명, 배송비, 카드 혜택을 확인한 뒤 결제하세요."
+    elif decision.verdict == "wait_for_price":
+        urgency = "가격 대기"
+        primary_action = "목표가 알림을 켜고 현재가가 목표가에 가까워질 때 결제하세요."
+    else:
+        urgency = "검수 필요"
+        primary_action = "조건 충족 매트릭스와 출처 신뢰도를 먼저 검수한 뒤 결제 여부를 결정하세요."
+
+    checkout_steps = [
+        f"1순위 모델명을 판매 페이지와 대조하세요: {top.product.model_name}",
+        (
+            f"실구매가 {top.price.effective_price_krw:,}원에 배송비, "
+            "조립비, OS 포함 여부가 반영됐는지 확인하세요."
+        ),
+        "필수 조건과 제외 조건의 충족/확인/차단 상태를 다시 확인하세요.",
+        *top.before_buy_checklist[:3],
+    ]
+    if top_alert is not None:
+        checkout_steps.append(
+            f"목표가 {top_alert.target_price_krw:,}원과 현재가 차이를 확인하세요."
+        )
+    if warning_count or blocker_count:
+        checkout_steps.append(
+            f"조건 매트릭스의 확인 {warning_count}개, "
+            f"차단 {blocker_count}개 항목을 먼저 해소하세요."
+        )
+
+    seller_questions = [
+        "판매 페이지의 CPU/GPU/RAM/SSD 옵션명이 리포트와 동일한가요?",
+        "조립비, OS 포함 여부, 배송비, 카드 할인 적용 후 최종 결제 금액은 얼마인가요?",
+        "재고가 실제 보유 재고인지, 품절 시 대체 부품으로 바뀌는지 확인 가능한가요?",
+    ]
+    if top.product.category == Category.desktop_pc:
+        seller_questions.append(
+            "케이스 GPU 길이, CPU 쿨러 높이, 파워 용량 호환성을 다시 확인해 주실 수 있나요?"
+        )
+    else:
+        seller_questions.append(
+            "RAM/SSD가 온보드인지, 교체나 추가 장착이 가능한지 확인해 주실 수 있나요?"
+        )
+
+    share_message = (
+        f"{top.product.model_name}을 1순위로 검토 중입니다. "
+        f"총점 {top.score.total_score}점, 실구매가 {top.price.effective_price_krw:,}원, "
+        f"구매 판정은 {decision.label}입니다. "
+        "조건 충족 매트릭스와 결제 전 체크리스트 기준으로 한 번 더 봐주세요."
+    )
+
+    return PurchaseExecutionPlan(
+        product_id=top.product.id,
+        model_name=top.product.model_name,
+        headline=f"{top.product.model_name} 구매 실행 패키지",
+        primary_action=primary_action,
+        urgency=urgency,
+        price_recheck_required=price_recheck_required,
+        checkout_steps=checkout_steps,
+        seller_questions=seller_questions,
+        share_message=share_message,
+    )
 
 
 def _criterion_match(

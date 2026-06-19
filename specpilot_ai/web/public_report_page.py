@@ -59,6 +59,15 @@ def public_report_html(report: PublicReport) -> str:
         """
         for item in purchase.criteria_matches
     )
+    execution = purchase.execution_plan
+    checkout_steps = "\n".join(
+        f"<li>{escape(item)}</li>"
+        for item in (execution.checkout_steps if execution else [])
+    )
+    seller_questions = "\n".join(
+        f"<li>{escape(item)}</li>"
+        for item in (execution.seller_questions if execution else [])
+    )
     flags = "\n".join(f"<li>{escape(flag)}</li>" for flag in purchase.verification_flags)
     trust = "\n".join(
         f"<li>{escape(source.source_name)} · {escape(source.trust_grade)} · 신뢰도 {round(source.confidence * 100)}%</li>"
@@ -198,6 +207,24 @@ def public_report_html(report: PublicReport) -> str:
         <p>확신도 {decision.confidence if decision else 0}점 · {escape(decision.reason if decision else "분석 결과 기반 구매 가능성을 계산합니다.")}</p>
         <ul>{decision_steps or "<li>최종 판매 페이지의 가격과 옵션명을 다시 확인하세요.</li>"}</ul>
       </div>
+      <div class="panel">
+        <span class="kicker">Execution package</span>
+        <h2>구매 실행 패키지</h2>
+        <p>{escape(execution.urgency if execution else "확인 필요")} · {escape(execution.primary_action if execution else "결제 전 조건과 출처를 확인하세요.")}</p>
+        <ul>{checkout_steps or "<li>최종 판매 페이지의 가격과 옵션명을 다시 확인하세요.</li>"}</ul>
+      </div>
+    </section>
+    <section class="two section">
+      <div class="panel">
+        <h2>판매자 확인 질문</h2>
+        <ul>{seller_questions or "<li>최종 결제 금액과 옵션명이 리포트와 같은지 확인해 주세요.</li>"}</ul>
+      </div>
+      <div class="panel">
+        <h2>공유 검토 문구</h2>
+        <p>{escape(execution.share_message if execution else "추천 리포트를 공유해 결제 전 한 번 더 검토받으세요.")}</p>
+      </div>
+    </section>
+    <section class="two section">
       <div class="panel">
         <h2>결제 전 체크리스트</h2>
         <ul>{checklist or decision_risks or "<li>출처, 가격, 재고, 옵션명을 다시 확인하세요.</li>"}</ul>

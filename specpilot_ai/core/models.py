@@ -261,6 +261,18 @@ class ProductCriteriaMatch(BaseModel):
     items: list[CriterionMatchItem] = Field(default_factory=list)
 
 
+class PurchaseExecutionPlan(BaseModel):
+    product_id: str | None = None
+    model_name: str | None = None
+    headline: str
+    primary_action: str
+    urgency: str
+    price_recheck_required: bool = True
+    checkout_steps: list[str] = Field(default_factory=list)
+    seller_questions: list[str] = Field(default_factory=list)
+    share_message: str
+
+
 class PurchaseReport(BaseModel):
     summary: str
     top_recommendations: list[Recommendation]
@@ -280,6 +292,7 @@ class PurchaseReport(BaseModel):
     purchase_decision: PurchaseDecision | None = None
     scenario_options: list[ScenarioOption] = Field(default_factory=list)
     criteria_matches: list[ProductCriteriaMatch] = Field(default_factory=list)
+    execution_plan: PurchaseExecutionPlan | None = None
     final_pick_id: str | None = None
 
 

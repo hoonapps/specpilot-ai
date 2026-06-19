@@ -48,6 +48,11 @@ def test_desktop_pc_analysis_returns_top_three_and_compatibility_notes() -> None
         item.criterion == "32GB RAM"
         for item in response.report.criteria_matches[0].items
     )
+    assert response.report.execution_plan is not None
+    assert response.report.execution_plan.product_id == response.report.final_pick_id
+    assert response.report.execution_plan.checkout_steps
+    assert response.report.execution_plan.seller_questions
+    assert "구매 판정" in response.report.execution_plan.share_message
     assert any(source.evidence_count > 0 for source in response.report.source_trust)
     assert response.quality_audit is not None
     assert response.quality_audit.quality_score > 0

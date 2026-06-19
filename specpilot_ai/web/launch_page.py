@@ -312,6 +312,9 @@ def launch_page_html() -> str:
         policy.stale_price_action,
         policy.affiliate_disclosure
       ].filter(Boolean).map((item) => `<li>${item}</li>`).join('');
+      const execution = report.execution_plan || {};
+      const checkoutSteps = (execution.checkout_steps || []).map((item) => `<li>${item}</li>`).join('');
+      const sellerQuestions = (execution.seller_questions || []).map((item) => `<li>${item}</li>`).join('');
       const traces = data.trace_events.map((event) => `
         <div class="${event.status === 'warning' ? 'warn' : ''}">
           <strong>${event.title}</strong><br />
@@ -344,6 +347,19 @@ def launch_page_html() -> str:
             <p><strong>${decision.label || '판정 대기'}</strong> · 확신도 ${decision.confidence || 0}점</p>
             <p>${decision.reason || '분석 결과를 기반으로 구매 가능성을 계산합니다.'}</p>
             <ul class="list">${decisionSteps}</ul>
+          </div>
+          <div class="card">
+            <h3>구매 실행 패키지</h3>
+            <p><strong>${execution.urgency || '확인 필요'}</strong> · ${execution.primary_action || '결제 전 조건과 출처를 확인하세요.'}</p>
+            <ul class="list">${checkoutSteps || '<li>최종 판매 페이지의 가격과 옵션명을 다시 확인하세요.</li>'}</ul>
+          </div>
+          <div class="card">
+            <h3>판매자 확인 질문</h3>
+            <ul class="list">${sellerQuestions || '<li>최종 결제 금액과 옵션명이 리포트와 같은지 확인해 주세요.</li>'}</ul>
+          </div>
+          <div class="card">
+            <h3>공유 검토 문구</h3>
+            <p>${execution.share_message || '추천 리포트를 공유해 결제 전 한 번 더 검토받으세요.'}</p>
           </div>
           <div class="card">
             <h3>결제 전 체크리스트</h3>
