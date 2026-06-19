@@ -71,6 +71,12 @@ def test_desktop_pc_analysis_returns_top_three_and_compatibility_notes() -> None
         item.field == "GPU"
         for item in response.report.option_audits[0].critical_items
     )
+    assert response.report.share_brief is not None
+    assert response.report.share_brief.final_pick_id == response.report.final_pick_id
+    assert response.report.share_brief.key_reasons
+    assert response.report.share_brief.watchouts
+    assert response.report.share_brief.reviewer_questions
+    assert "SpecPilot AI 검토 요청" in response.report.share_brief.copy_text
     assert response.report.execution_plan is not None
     assert response.report.execution_plan.product_id == response.report.final_pick_id
     assert response.report.execution_plan.checkout_steps

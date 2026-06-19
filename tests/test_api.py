@@ -15,6 +15,7 @@ def test_launch_page_exposes_product_ui() -> None:
     assert "분석 실행" in response.text
     assert "목표가 도달 테스트" in response.text
     assert "공유 링크 생성" in response.text
+    assert "공유용 검토 브리프" in response.text
     assert "구매 판정" in response.text
     assert "대안 시나리오" in response.text
     assert "예산/조건 스트레스 테스트" in response.text
@@ -106,6 +107,9 @@ def test_analyze_endpoint_returns_trace_and_alerts() -> None:
     assert len(payload["report"]["option_audits"]) == 5
     assert payload["report"]["option_audits"][0]["critical_items"]
     assert payload["report"]["option_audits"][0]["mismatch_risks"]
+    assert payload["report"]["share_brief"]["key_reasons"]
+    assert payload["report"]["share_brief"]["reviewer_questions"]
+    assert "SpecPilot AI 검토 요청" in payload["report"]["share_brief"]["copy_text"]
     assert payload["report"]["execution_plan"]["checkout_steps"]
     assert payload["report"]["execution_plan"]["seller_questions"]
     assert payload["report"]["top_recommendations"][0]["price"]["effective_price_krw"] > 0
@@ -186,6 +190,7 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
     public_page = client.get(f"/r/{share_payload['share_token']}")
     assert public_page.status_code == 200
     assert "테스트 구매 리포트" in public_page.text
+    assert "공유용 검토 브리프" in public_page.text
     assert "후보 비교표" in public_page.text
     assert "결제 전 체크리스트" in public_page.text
     assert "대안 시나리오" in public_page.text

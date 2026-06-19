@@ -302,6 +302,19 @@ class ProductOptionAudit(BaseModel):
     purchase_blockers: list[str] = Field(default_factory=list)
 
 
+class ShareReviewBrief(BaseModel):
+    headline: str
+    verdict_label: str
+    final_pick_id: str | None = None
+    final_pick_model: str | None = None
+    effective_price_krw: int | None = None
+    confidence: float = Field(ge=0, le=100)
+    key_reasons: list[str] = Field(default_factory=list)
+    watchouts: list[str] = Field(default_factory=list)
+    reviewer_questions: list[str] = Field(default_factory=list)
+    copy_text: str
+
+
 class PurchaseExecutionPlan(BaseModel):
     product_id: str | None = None
     model_name: str | None = None
@@ -336,6 +349,7 @@ class PurchaseReport(BaseModel):
     stress_tests: list[PurchaseStressTest] = Field(default_factory=list)
     evidence_packs: list[ProductEvidencePack] = Field(default_factory=list)
     option_audits: list[ProductOptionAudit] = Field(default_factory=list)
+    share_brief: ShareReviewBrief | None = None
     execution_plan: PurchaseExecutionPlan | None = None
     final_pick_id: str | None = None
 

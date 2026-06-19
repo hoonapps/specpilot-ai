@@ -33,6 +33,7 @@ from specpilot_ai.core.models import (
     ReviewInsight,
     ScenarioOption,
     ScoreCard,
+    ShareReviewBrief,
     SourceTrustAssessment,
     TraceEvent,
 )
@@ -450,6 +451,13 @@ def report_writer(state: PurchaseState) -> PurchaseState:
         price_alerts,
         criteria_matches,
     )
+    share_brief = _share_brief(
+        recommendations,
+        purchase_decision,
+        evidence_packs,
+        option_audits,
+        stress_tests,
+    )
     state["report"] = PurchaseReport(
         summary=summary_chain.invoke(
             {
@@ -481,6 +489,7 @@ def report_writer(state: PurchaseState) -> PurchaseState:
         stress_tests=stress_tests,
         evidence_packs=evidence_packs,
         option_audits=option_audits,
+        share_brief=share_brief,
         execution_plan=execution_plan,
         final_pick_id=recommendations[0].product.id if recommendations else None,
     )
@@ -1202,6 +1211,75 @@ def _format_spec_value(product: ProductCandidate, key: str) -> str:
     if key in {"external_gpu", "upgradeable_ram"}:
         return "예" if value else "아니오"
     return str(value)
+
+
+def _share_brief(
+    recommendations: list[Recommendation],
+    decision: PurchaseDecision,
+    evidence_packs: list[ProductEvidencePack],
+    option_audits: list[ProductOptionAudit],
+    stress_tests: list[PurchaseStressTest],
+) -> ShareReviewBrief:
+    if not recommendations:
+        return ShareReviewBrief(
+            headline="추천 후보를 확정하기 전에 조건 보강이 필요합니다.",
+            verdict_label=decision.label,
+            confidence=decision.confidence,
+            key_reasons=["비교 가능한 추천 후보가 충분하지 않습니다."],
+            watchouts=decision.risk_flags or ["예산, 용도, 필수 조건을 더 구체화해야 합니다."],
+            reviewer_questions=["이 조건으로 후보를 더 넓혀도 되는지 검토해 주세요."],
+            copy_text="추천 후보가 부족해 조건을 보강한 뒤 다시 분석해야 합니다.",
+        )
+
+    top = recommendations[0]
+    evidence = next(
+        (item for item in evidence_packs if item.product_id == top.product.id),
+        None,
+    )
+    option_audit = next(
+        (item for item in option_audits if item.product_id == top.product.id),
+        None,
+    )
+    stress_watchouts = [
+        f"{item.label}: {item.impact}"
+        for item in stress_tests
+        if item.status != CheckStatus.ok
+    ]
+    key_reasons = [
+        top.fit_summary,
+        evidence.price_evidence if evidence else top.price.seller,
+        evidence.trust_summary if evidence else "출처 신뢰도 확인 필요",
+    ]
+    watchouts = [
+        *decision.risk_flags[:2],
+        *(option_audit.mismatch_risks[:2] if option_audit else []),
+        *stress_watchouts[:1],
+    ]
+    if not watchouts:
+        watchouts = ["최종 결제 화면의 가격, 옵션명, 재고를 다시 확인하세요."]
+    reviewer_questions = [
+        f"{top.product.model_name}이 용도와 예산에 맞는 1순위로 보이나요?",
+        "옵션/사양 검수표의 기대값과 판매 페이지 구성이 같은가요?",
+        "리스크와 스트레스 테스트 결과 중 결제 전에 더 확인할 항목이 있나요?",
+    ]
+    copy_text = (
+        f"SpecPilot AI 검토 요청: {top.product.model_name}을 1순위로 보고 있습니다. "
+        f"구매 판정은 {decision.label}, 확신도 {decision.confidence}점, "
+        f"실구매가 {top.price.effective_price_krw:,}원입니다. "
+        "근거 팩과 옵션/사양 검수표 기준으로 결제 전 한 번 더 봐주세요."
+    )
+    return ShareReviewBrief(
+        headline=f"{top.product.model_name} 공유 검토 브리프",
+        verdict_label=decision.label,
+        final_pick_id=top.product.id,
+        final_pick_model=top.product.model_name,
+        effective_price_krw=top.price.effective_price_krw,
+        confidence=decision.confidence,
+        key_reasons=key_reasons,
+        watchouts=watchouts,
+        reviewer_questions=reviewer_questions,
+        copy_text=copy_text,
+    )
 
 
 def _execution_plan(

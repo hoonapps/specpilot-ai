@@ -8,6 +8,7 @@ from specpilot_ai.core.models import PublicReport
 def public_report_html(report: PublicReport) -> str:
     purchase = report.response.report
     decision = purchase.purchase_decision
+    share_brief = purchase.share_brief
     top_cards = "\n".join(
         f"""
         <article class="card">
@@ -130,6 +131,9 @@ def public_report_html(report: PublicReport) -> str:
             else []
         )
     )
+    brief_reasons = _list_items(share_brief.key_reasons if share_brief else [])
+    brief_watchouts = _list_items(share_brief.watchouts if share_brief else [])
+    brief_questions = _list_items(share_brief.reviewer_questions if share_brief else [])
     return f"""
 <!doctype html>
 <html lang="ko">
@@ -239,6 +243,18 @@ def public_report_html(report: PublicReport) -> str:
       </aside>
     </section>
     <section class="grid cards">{top_cards}</section>
+    <section class="section panel">
+      <span class="kicker">Share brief</span>
+      <h2>공유용 검토 브리프</h2>
+      <p><strong>{escape(share_brief.verdict_label if share_brief else "판정 대기")}</strong> · 확신도 {share_brief.confidence if share_brief else 0}점</p>
+      <p>{escape(share_brief.copy_text if share_brief else "공개 리포트를 공유해 결제 전 한 번 더 검토받으세요.")}</p>
+      <div class="two">
+        <div><h3>핵심 근거</h3><ul>{brief_reasons}</ul></div>
+        <div><h3>확인할 점</h3><ul>{brief_watchouts}</ul></div>
+      </div>
+      <h3>검토 질문</h3>
+      <ul>{brief_questions}</ul>
+    </section>
     <section class="section">
       <h2>대안 시나리오</h2>
       <div class="grid cards">{scenario_cards}</div>

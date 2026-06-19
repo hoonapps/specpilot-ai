@@ -358,6 +358,10 @@ def launch_page_html() -> str:
       const execution = report.execution_plan || {};
       const checkoutSteps = (execution.checkout_steps || []).map((item) => `<li>${item}</li>`).join('');
       const sellerQuestions = (execution.seller_questions || []).map((item) => `<li>${item}</li>`).join('');
+      const shareBrief = report.share_brief || {};
+      const shareReasons = (shareBrief.key_reasons || []).map((item) => `<li>${item}</li>`).join('');
+      const shareWatchouts = (shareBrief.watchouts || []).map((item) => `<li>${item}</li>`).join('');
+      const shareQuestions = (shareBrief.reviewer_questions || []).map((item) => `<li>${item}</li>`).join('');
       const traces = data.trace_events.map((event) => `
         <div class="${event.status === 'warning' ? 'warn' : ''}">
           <strong>${event.title}</strong><br />
@@ -380,6 +384,17 @@ def launch_page_html() -> str:
           </div>
         </div>
         <div class="grid cards">${topCards}</div>
+        <section class="section">
+          <h3>공유용 검토 브리프</h3>
+          <div class="card">
+            <h3>${shareBrief.headline || '공유 검토 브리프'}</h3>
+            <p><strong>${shareBrief.verdict_label || '판정 대기'}</strong> · 확신도 ${shareBrief.confidence || 0}점</p>
+            <ul class="list">${shareReasons}</ul>
+            <ul class="list">${shareWatchouts}</ul>
+            <ul class="list">${shareQuestions}</ul>
+            <p>${shareBrief.copy_text || '공개 리포트를 공유해 결제 전 한 번 더 검토받으세요.'}</p>
+          </div>
+        </section>
         <section class="section">
           <h3>대안 시나리오</h3>
           <div class="grid cards">${scenarioCards}</div>
