@@ -41,6 +41,12 @@ class ReviewStatus(StrEnum):
     rejected = "rejected"
 
 
+class WorkspaceContext(BaseModel):
+    workspace_id: str
+    owner_label: str
+    role: str = "owner"
+
+
 class PurchaseCriteria(BaseModel):
     category: Category
     budget_krw: int | None = Field(default=None, ge=0)
@@ -225,6 +231,7 @@ class SavedReportSummary(BaseModel):
     report_id: str
     trace_id: str
     title: str
+    workspace_id: str = "demo"
     owner_label: str
     final_pick_id: str | None = None
     top_model_name: str | None = None
@@ -250,6 +257,7 @@ class AlertSubscription(BaseModel):
     subscription_id: str
     trace_id: str
     product_id: str
+    workspace_id: str = "demo"
     target_price_krw: int
     current_price_krw: int
     channels: list[str]
@@ -260,6 +268,7 @@ class AlertSubscription(BaseModel):
 
 
 class OperationsMetrics(BaseModel):
+    workspace_id: str | None = None
     analysis_runs: int
     saved_reports: int
     alert_subscriptions: int

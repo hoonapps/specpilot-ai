@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_version: str = "0.1.0"
     demo_mode: bool = True
+    default_workspace_id: str = "demo"
+    default_api_key: str = "specpilot-demo-key"
     openai_api_key: str | None = None
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_username: str = "neo4j"
