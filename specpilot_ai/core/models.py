@@ -274,6 +274,18 @@ class PurchaseStressTest(BaseModel):
     recommendation: str
 
 
+class ProductEvidencePack(BaseModel):
+    product_id: str
+    model_name: str
+    price_evidence: str
+    review_evidence: str
+    benchmark_evidence: list[str] = Field(default_factory=list)
+    compatibility_evidence: list[str] = Field(default_factory=list)
+    trust_summary: str
+    citation_urls: list[str] = Field(default_factory=list)
+    review_required: bool = False
+
+
 class PurchaseExecutionPlan(BaseModel):
     product_id: str | None = None
     model_name: str | None = None
@@ -306,6 +318,7 @@ class PurchaseReport(BaseModel):
     scenario_options: list[ScenarioOption] = Field(default_factory=list)
     criteria_matches: list[ProductCriteriaMatch] = Field(default_factory=list)
     stress_tests: list[PurchaseStressTest] = Field(default_factory=list)
+    evidence_packs: list[ProductEvidencePack] = Field(default_factory=list)
     execution_plan: PurchaseExecutionPlan | None = None
     final_pick_id: str | None = None
 

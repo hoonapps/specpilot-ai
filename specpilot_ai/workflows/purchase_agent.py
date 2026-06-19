@@ -21,6 +21,7 @@ from specpilot_ai.core.models import (
     PriceSnapshot,
     ProductCandidate,
     ProductCriteriaMatch,
+    ProductEvidencePack,
     PurchaseCriteria,
     PurchaseDecision,
     PurchaseExecutionPlan,
@@ -431,6 +432,15 @@ def report_writer(state: PurchaseState) -> PurchaseState:
         state["criteria"],
         criteria_matches,
     )
+    evidence_packs = _evidence_packs(
+        ranked[:5],
+        products,
+        prices,
+        reviews,
+        benchmarks_by_product,
+        checks_by_product,
+        source_trust,
+    )
     execution_plan = _execution_plan(
         recommendations,
         purchase_decision,
@@ -466,6 +476,7 @@ def report_writer(state: PurchaseState) -> PurchaseState:
         scenario_options=scenario_options,
         criteria_matches=criteria_matches,
         stress_tests=stress_tests,
+        evidence_packs=evidence_packs,
         execution_plan=execution_plan,
         final_pick_id=recommendations[0].product.id if recommendations else None,
     )
@@ -982,6 +993,88 @@ def _stress_tests(
     )
 
     return [reduced, expanded, strict_conditions]
+
+
+def _evidence_packs(
+    ranked: list[ScoreCard],
+    products: dict[str, ProductCandidate],
+    prices: dict[str, PriceSnapshot],
+    reviews: dict[str, ReviewInsight],
+    benchmarks_by_product: dict[str, list[BenchmarkEvidence]],
+    checks_by_product: dict[str, list[CompatibilityCheck]],
+    source_trust: list[SourceTrustAssessment],
+) -> list[ProductEvidencePack]:
+    trust_by_type = {source.source_type: source for source in source_trust}
+    review_trust = trust_by_type.get("review_signal")
+    benchmark_trust = trust_by_type.get("benchmark")
+    packs: list[ProductEvidencePack] = []
+
+    for card in ranked:
+        product = products[card.product_id]
+        price = prices[card.product_id]
+        review = reviews[card.product_id]
+        price_trust = trust_by_type.get(price.source_type)
+        product_benchmarks = benchmarks_by_product.get(product.id, [])
+        product_checks = checks_by_product.get(product.id, [])
+        non_ok_checks = [check for check in product_checks if check.status != CheckStatus.ok]
+        benchmark_lines = [
+            f"{item.workload}: {item.score_label} - {item.summary}"
+            for item in product_benchmarks[:3]
+        ]
+        compatibility_lines = [
+            f"{check.component}: {check.status.value} - {check.message}"
+            for check in product_checks[:4]
+        ]
+        citation_urls = [
+            product.source_url,
+            price.url,
+            *[item.evidence_url for item in product_benchmarks[:3]],
+        ]
+        review_required = any(
+            [
+                bool(non_ok_checks),
+                bool(review.risk_signals),
+                price_trust.requires_human_review if price_trust else True,
+                review_trust.requires_human_review if review_trust else False,
+                benchmark_trust.requires_human_review if benchmark_trust else False,
+            ]
+        )
+        trust_parts = []
+        if price_trust:
+            trust_parts.append(
+                f"가격 {price_trust.trust_grade}({round(price_trust.confidence * 100)}%)"
+            )
+        if review_trust:
+            trust_parts.append(
+                f"리뷰 {review_trust.trust_grade}({review.evidence_count}건)"
+            )
+        if benchmark_trust and product_benchmarks:
+            trust_parts.append(f"벤치마크 {len(product_benchmarks)}건")
+        trust_parts.append("검수 필요" if review_required else "자동 공개 가능")
+
+        packs.append(
+            ProductEvidencePack(
+                product_id=product.id,
+                model_name=product.model_name,
+                price_evidence=(
+                    f"{price.seller} 기준 실구매가 {price.effective_price_krw:,}원 "
+                    f"(배송 {price.shipping_fee_krw:,}원, 조립 {price.assembly_fee_krw:,}원, "
+                    f"쿠폰 {price.coupon_krw:,}원, 카드 할인 {price.card_discount_krw:,}원)"
+                ),
+                review_evidence=(
+                    f"리뷰 근거 {review.evidence_count}건, 신뢰도 "
+                    f"{round(review.trust_score * 100)}%. "
+                    f"장점: {', '.join(review.pros[:2]) or '확인 필요'}. "
+                    f"리스크: {', '.join(review.risk_signals[:2]) or '중대 신호 없음'}."
+                ),
+                benchmark_evidence=benchmark_lines,
+                compatibility_evidence=compatibility_lines,
+                trust_summary=" / ".join(trust_parts),
+                citation_urls=[url for url in citation_urls if url],
+                review_required=review_required,
+            )
+        )
+    return packs
 
 
 def _execution_plan(

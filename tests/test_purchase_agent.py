@@ -56,6 +56,13 @@ def test_desktop_pc_analysis_returns_top_three_and_compatibility_notes() -> None
     }
     assert all(item.impact for item in response.report.stress_tests)
     assert all(item.recommendation for item in response.report.stress_tests)
+    assert len(response.report.evidence_packs) == 5
+    assert response.report.evidence_packs[0].product_id == response.report.final_pick_id
+    assert response.report.evidence_packs[0].price_evidence
+    assert response.report.evidence_packs[0].review_evidence
+    assert response.report.evidence_packs[0].benchmark_evidence
+    assert response.report.evidence_packs[0].compatibility_evidence
+    assert response.report.evidence_packs[0].citation_urls
     assert response.report.execution_plan is not None
     assert response.report.execution_plan.product_id == response.report.final_pick_id
     assert response.report.execution_plan.checkout_steps

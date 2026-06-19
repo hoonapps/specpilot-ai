@@ -303,6 +303,21 @@ def launch_page_html() -> str:
           <p>${item.recommendation}</p>
         </article>
       `).join('');
+      const evidenceCards = (report.evidence_packs || []).map((item) => {
+        const benchmarks = (item.benchmark_evidence || []).map((line) => `<li>${line}</li>`).join('');
+        const compatibility = (item.compatibility_evidence || []).map((line) => `<li>${line}</li>`).join('');
+        return `
+          <article class="card">
+            <div class="rank">${item.review_required ? '검수 필요' : '근거 충분'}</div>
+            <h3>${item.model_name}</h3>
+            <p>${item.price_evidence}</p>
+            <p>${item.review_evidence}</p>
+            <p><strong>${item.trust_summary}</strong></p>
+            <ul class="list">${benchmarks || '<li>벤치마크 근거 추가 확인 필요</li>'}</ul>
+            <ul class="list">${compatibility || '<li>호환성 세부 체크 추가 확인 필요</li>'}</ul>
+          </article>
+        `;
+      }).join('');
       const alerts = report.price_alerts.map((alert) => `
         <li>${alert.product_id}: 목표가 ${won(alert.target_price_krw)} / ${alert.recheck_interval_days}일마다 재확인</li>
       `).join('');
@@ -353,6 +368,10 @@ def launch_page_html() -> str:
         <section class="section">
           <h3>예산/조건 스트레스 테스트</h3>
           <div class="grid cards">${stressCards}</div>
+        </section>
+        <section class="section">
+          <h3>후보별 근거 팩</h3>
+          <div class="grid cards">${evidenceCards}</div>
         </section>
         <section class="sections">
           <div class="card">

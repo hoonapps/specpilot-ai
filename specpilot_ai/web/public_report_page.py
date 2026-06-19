@@ -45,6 +45,20 @@ def public_report_html(report: PublicReport) -> str:
         """
         for item in purchase.stress_tests
     )
+    evidence_cards = "\n".join(
+        f"""
+        <article class="card">
+          <span class="rank">{"검수 필요" if item.review_required else "근거 충분"}</span>
+          <h3>{escape(item.model_name)}</h3>
+          <p>{escape(item.price_evidence)}</p>
+          <p>{escape(item.review_evidence)}</p>
+          <p><strong>{escape(item.trust_summary)}</strong></p>
+          <ul>{_list_items(item.benchmark_evidence) or "<li>벤치마크 근거 추가 확인 필요</li>"}</ul>
+          <ul>{_list_items(item.compatibility_evidence) or "<li>호환성 세부 체크 추가 확인 필요</li>"}</ul>
+        </article>
+        """
+        for item in purchase.evidence_packs
+    )
     rows = "\n".join(
         f"""
         <tr>
@@ -216,6 +230,10 @@ def public_report_html(report: PublicReport) -> str:
       <h2>예산/조건 스트레스 테스트</h2>
       <div class="grid cards">{stress_cards}</div>
     </section>
+    <section class="section">
+      <h2>후보별 근거 팩</h2>
+      <div class="grid cards">{evidence_cards}</div>
+    </section>
     <section class="two section">
       <div class="panel">
         <span class="kicker">Purchase decision</span>
@@ -282,3 +300,7 @@ def public_report_html(report: PublicReport) -> str:
 
 def _won(value: int) -> str:
     return f"{value:,}원"
+
+
+def _list_items(items: list[str]) -> str:
+    return "\n".join(f"<li>{escape(item)}</li>" for item in items)
