@@ -114,6 +114,7 @@ def launch_page_html() -> str:
     }
     .primary { background: var(--teal); color: white; }
     .secondary { border: 1px solid var(--line); background: white; color: var(--ink); }
+    .mini-action { min-height: 36px; padding: 0 11px; font-size: 13px; }
     .result-panel { padding: clamp(18px, 3vw, 28px); }
     .status {
       display: grid;
@@ -222,6 +223,7 @@ def launch_page_html() -> str:
     const form = document.querySelector('#analysis-form');
     const results = document.querySelector('#results');
     const laptopDemo = document.querySelector('#laptop-demo');
+    let latestAnalysis = null;
 
     function splitInput(value) {
       return value.split(',').map((item) => item.trim()).filter(Boolean);
@@ -244,6 +246,7 @@ def launch_page_html() -> str:
     }
 
     function render(data) {
+      latestAnalysis = data;
       const report = data.report;
       const topCards = report.top_recommendations.map((rec) => `
         <article class="card">
@@ -279,6 +282,11 @@ def launch_page_html() -> str:
           <span class="kicker">Trace ${data.graph_trace_id}</span>
           <h2>${report.summary}</h2>
           <p>${report.purchase_timing}</p>
+          <div class="actions">
+            <button class="primary mini-action" type="button" id="save-report">리포트 저장</button>
+            <button class="secondary mini-action" type="button" id="subscribe-alert">1순위 가격 알림</button>
+            <button class="secondary mini-action" type="button" id="view-metrics">운영 지표</button>
+          </div>
         </div>
         <div class="grid cards">${topCards}</div>
         <section class="sections">
@@ -303,6 +311,47 @@ def launch_page_html() -> str:
           </div>
         </section>
       `;
+      bindResultActions();
+    }
+
+    function bindResultActions() {
+      document.querySelector('#save-report')?.addEventListener('click', async () => {
+        const response = await fetch('/reports/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            trace_id: latestAnalysis.graph_trace_id,
+            owner_label: 'demo-user',
+            notes: '웹 UI에서 저장한 구매 리포트'
+          })
+        });
+        const saved = await response.json();
+        alert(`저장 완료: ${saved.report_id}`);
+      });
+
+      document.querySelector('#subscribe-alert')?.addEventListener('click', async () => {
+        const first = latestAnalysis.report.price_alerts[0];
+        const response = await fetch('/alerts/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            trace_id: latestAnalysis.graph_trace_id,
+            product_id: first.product_id,
+            target_price_krw: first.target_price_krw,
+            channels: ['email'],
+            contact: 'demo@example.com',
+            owner_label: 'demo-user'
+          })
+        });
+        const subscribed = await response.json();
+        alert(`알림 구독 완료: ${subscribed.subscription_id}`);
+      });
+
+      document.querySelector('#view-metrics')?.addEventListener('click', async () => {
+        const response = await fetch('/ops/metrics');
+        const metrics = await response.json();
+        alert(`분석 ${metrics.analysis_runs}건 / 저장 ${metrics.saved_reports}건 / 알림 ${metrics.alert_subscriptions}건`);
+      });
     }
 
     form.addEventListener('submit', async (event) => {
