@@ -297,11 +297,43 @@ class AlertSubscription(BaseModel):
     created_at: str
 
 
+class AlertEvaluationRequest(BaseModel):
+    price_overrides_krw: dict[str, int] = Field(default_factory=dict)
+    dry_run: bool = False
+    limit: int = Field(default=50, ge=1, le=200)
+
+
+class AlertDeliveryEvent(BaseModel):
+    event_id: str
+    subscription_id: str
+    trace_id: str
+    product_id: str
+    workspace_id: str = "demo"
+    target_price_krw: int
+    current_price_krw: int
+    delta_krw: int
+    channels: list[str]
+    contact_masked: str
+    delivery_status: str
+    message: str
+    created_at: str
+
+
+class AlertEvaluationResponse(BaseModel):
+    workspace_id: str
+    evaluated_count: int
+    triggered_count: int
+    dry_run: bool
+    events: list[AlertDeliveryEvent] = Field(default_factory=list)
+
+
 class OperationsMetrics(BaseModel):
     workspace_id: str | None = None
     analysis_runs: int
     saved_reports: int
     alert_subscriptions: int
+    alert_events: int = 0
+    triggered_alerts: int = 0
     latest_trace_id: str | None = None
     average_top_score: float = 0
     conversion_ready_rate: float = 0

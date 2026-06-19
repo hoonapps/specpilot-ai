@@ -6,6 +6,8 @@ from uuid import uuid4
 
 from specpilot_ai.core.config import Settings
 from specpilot_ai.core.models import (
+    AlertDeliveryEvent,
+    AlertEvaluationResponse,
     AlertSubscription,
     AnalyzeResponse,
     OperationsMetrics,
@@ -325,6 +327,103 @@ class SpecPilotStore:
             ).fetchall()
         return [_alert_from_row(row) for row in rows]
 
+    def evaluate_alerts_for_workspace(
+        self,
+        workspace_id: str,
+        *,
+        price_overrides_krw: dict[str, int],
+        dry_run: bool,
+        limit: int,
+    ) -> AlertEvaluationResponse:
+        subscriptions = self.list_alert_subscriptions_for_workspace(workspace_id, limit=limit)
+        now = _now()
+        events: list[AlertDeliveryEvent] = []
+        for subscription in subscriptions:
+            if subscription.status != "active":
+                continue
+            current_price = price_overrides_krw.get(
+                subscription.product_id,
+                subscription.current_price_krw,
+            )
+            if current_price > subscription.target_price_krw:
+                continue
+            event = AlertDeliveryEvent(
+                event_id=f"event_{uuid4().hex[:12]}",
+                subscription_id=subscription.subscription_id,
+                trace_id=subscription.trace_id,
+                product_id=subscription.product_id,
+                workspace_id=workspace_id,
+                target_price_krw=subscription.target_price_krw,
+                current_price_krw=current_price,
+                delta_krw=subscription.target_price_krw - current_price,
+                channels=subscription.channels,
+                contact_masked=_mask_contact(subscription.contact),
+                delivery_status="dry_run" if dry_run else "queued",
+                message=(
+                    f"{subscription.product_id} 현재가 {current_price:,}원이 "
+                    f"목표가 {subscription.target_price_krw:,}원 이하입니다."
+                ),
+                created_at=now,
+            )
+            events.append(event)
+        if events and not dry_run:
+            self.add_alert_events(events)
+        return AlertEvaluationResponse(
+            workspace_id=workspace_id,
+            evaluated_count=len(subscriptions),
+            triggered_count=len(events),
+            dry_run=dry_run,
+            events=events,
+        )
+
+    def add_alert_events(self, events: list[AlertDeliveryEvent]) -> list[AlertDeliveryEvent]:
+        with self._connect() as conn:
+            for event in events:
+                conn.execute(
+                    """
+                    INSERT INTO alert_delivery_events (
+                        event_id, subscription_id, trace_id, product_id, workspace_id,
+                        target_price_krw, current_price_krw, delta_krw, channels_json,
+                        contact_masked, delivery_status, message, created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        event.event_id,
+                        event.subscription_id,
+                        event.trace_id,
+                        event.product_id,
+                        event.workspace_id,
+                        event.target_price_krw,
+                        event.current_price_krw,
+                        event.delta_krw,
+                        json.dumps(event.channels, ensure_ascii=False),
+                        event.contact_masked,
+                        event.delivery_status,
+                        event.message,
+                        event.created_at,
+                    ),
+                )
+        return events
+
+    def list_alert_events_for_workspace(
+        self,
+        workspace_id: str,
+        limit: int = 50,
+    ) -> list[AlertDeliveryEvent]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM alert_delivery_events
+                WHERE workspace_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (workspace_id, limit),
+            ).fetchall()
+        return [_alert_event_from_row(row) for row in rows]
+
     def add_review_items(self, items: list[ReviewQueueItem]) -> list[ReviewQueueItem]:
         with self._connect() as conn:
             for item in items:
@@ -421,6 +520,18 @@ class SpecPilotStore:
                 f"SELECT COUNT(*) FROM alert_subscriptions{where}",
                 params,
             ).fetchone()[0]
+            alert_events = conn.execute(
+                f"SELECT COUNT(*) FROM alert_delivery_events{where}",
+                params,
+            ).fetchone()[0]
+            triggered_alerts = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM alert_delivery_events{where}
+                {' AND ' if where else ' WHERE '}delivery_status IN ('queued', 'sent')
+                """,
+                params,
+            ).fetchone()[0]
             latest = conn.execute(
                 f"SELECT trace_id FROM analysis_runs{where} ORDER BY created_at DESC LIMIT 1",
                 params,
@@ -446,6 +557,8 @@ class SpecPilotStore:
             analysis_runs=analysis_runs,
             saved_reports=saved_reports,
             alert_subscriptions=alert_subscriptions,
+            alert_events=alert_events,
+            triggered_alerts=triggered_alerts,
             latest_trace_id=latest["trace_id"] if latest else None,
             average_top_score=round(float(score_row[0] or 0), 2),
             conversion_ready_rate=round(float(ready_row[0] or 0), 4),
@@ -510,12 +623,33 @@ class SpecPilotStore:
                     note TEXT NOT NULL DEFAULT ''
                 );
 
+                CREATE TABLE IF NOT EXISTS alert_delivery_events (
+                    event_id TEXT PRIMARY KEY,
+                    subscription_id TEXT NOT NULL,
+                    trace_id TEXT NOT NULL,
+                    product_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL DEFAULT 'demo',
+                    target_price_krw INTEGER NOT NULL,
+                    current_price_krw INTEGER NOT NULL,
+                    delta_krw INTEGER NOT NULL,
+                    channels_json TEXT NOT NULL,
+                    contact_masked TEXT NOT NULL,
+                    delivery_status TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(subscription_id) REFERENCES alert_subscriptions(subscription_id)
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_saved_reports_trace
                     ON saved_reports(trace_id);
                 CREATE INDEX IF NOT EXISTS idx_alerts_trace
                     ON alert_subscriptions(trace_id);
                 CREATE INDEX IF NOT EXISTS idx_source_review_status
                     ON source_review_queue(status);
+                CREATE INDEX IF NOT EXISTS idx_alert_events_workspace
+                    ON alert_delivery_events(workspace_id);
+                CREATE INDEX IF NOT EXISTS idx_alert_events_subscription
+                    ON alert_delivery_events(subscription_id);
                 """
             )
             _ensure_column(conn, "analysis_runs", "workspace_id", "TEXT NOT NULL DEFAULT 'demo'")
@@ -563,6 +697,25 @@ def _alert_from_row(row: sqlite3.Row) -> AlertSubscription:
     )
 
 
+def _alert_event_from_row(row: sqlite3.Row) -> AlertDeliveryEvent:
+    data = dict(row)
+    return AlertDeliveryEvent(
+        event_id=data["event_id"],
+        subscription_id=data["subscription_id"],
+        trace_id=data["trace_id"],
+        product_id=data["product_id"],
+        workspace_id=data["workspace_id"],
+        target_price_krw=data["target_price_krw"],
+        current_price_krw=data["current_price_krw"],
+        delta_krw=data["delta_krw"],
+        channels=json.loads(data["channels_json"]),
+        contact_masked=data["contact_masked"],
+        delivery_status=data["delivery_status"],
+        message=data["message"],
+        created_at=data["created_at"],
+    )
+
+
 def _review_item_from_row(row: sqlite3.Row) -> ReviewQueueItem:
     data = dict(row)
     return ReviewQueueItem(
@@ -589,3 +742,13 @@ def _ensure_column(
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _mask_contact(contact: str) -> str:
+    if "@" in contact:
+        name, domain = contact.split("@", 1)
+        visible = name[:2] if len(name) > 2 else name[:1]
+        return f"{visible}***@{domain}"
+    if len(contact) <= 4:
+        return "***"
+    return f"{contact[:3]}***{contact[-2:]}"

@@ -5,6 +5,9 @@ from specpilot_ai.api.auth import workspace_context
 from specpilot_ai.core.config import get_settings
 from specpilot_ai.core.models import (
     AdminReviewDashboard,
+    AlertDeliveryEvent,
+    AlertEvaluationRequest,
+    AlertEvaluationResponse,
     AlertSubscription,
     AlertSubscriptionRequest,
     AnalyzeRequest,
@@ -296,6 +299,27 @@ def list_alert_subscriptions(
     workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
 ) -> list[AlertSubscription]:
     return _store().list_alert_subscriptions_for_workspace(workspace.workspace_id, limit=limit)
+
+
+@app.post("/alerts/evaluate", response_model=AlertEvaluationResponse)
+def evaluate_alerts(
+    request: AlertEvaluationRequest,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> AlertEvaluationResponse:
+    return _store().evaluate_alerts_for_workspace(
+        workspace.workspace_id,
+        price_overrides_krw=request.price_overrides_krw,
+        dry_run=request.dry_run,
+        limit=request.limit,
+    )
+
+
+@app.get("/alerts/events", response_model=list[AlertDeliveryEvent])
+def list_alert_events(
+    limit: int = 50,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> list[AlertDeliveryEvent]:
+    return _store().list_alert_events_for_workspace(workspace.workspace_id, limit=limit)
 
 
 @app.get("/ops/metrics", response_model=OperationsMetrics)

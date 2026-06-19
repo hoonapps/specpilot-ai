@@ -145,6 +145,33 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
     assert subscribed.status_code == 200
     assert subscribed.json()["status"] == "active"
     assert subscribed.json()["workspace_id"] == saved_payload["workspace_id"]
+    subscription_id = subscribed.json()["subscription_id"]
+
+    evaluated = client.post(
+        "/alerts/evaluate",
+        headers=WORKSPACE_A,
+        json={
+            "price_overrides_krw": {
+                first_alert["product_id"]: first_alert["target_price_krw"] - 1
+            },
+            "dry_run": False,
+        },
+    )
+    assert evaluated.status_code == 200
+    evaluated_payload = evaluated.json()
+    assert evaluated_payload["triggered_count"] >= 1
+    assert any(
+        event["subscription_id"] == subscription_id
+        and event["delivery_status"] == "queued"
+        for event in evaluated_payload["events"]
+    )
+
+    events = client.get("/alerts/events", headers=WORKSPACE_A)
+    assert events.status_code == 200
+    assert any(event["subscription_id"] == subscription_id for event in events.json())
+
+    isolated_events = client.get("/alerts/events", headers=WORKSPACE_B)
+    assert all(event["subscription_id"] != subscription_id for event in isolated_events.json())
 
     blocked_trace = client.get(f"/traces/{trace_id}", headers=WORKSPACE_B)
     assert blocked_trace.status_code == 404
@@ -155,6 +182,8 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
     assert payload["analysis_runs"] >= 1
     assert payload["saved_reports"] >= 1
     assert payload["alert_subscriptions"] >= 1
+    assert payload["alert_events"] >= 1
+    assert payload["triggered_alerts"] >= 1
 
 
 def test_alert_preview_endpoint_returns_three_targets() -> None:
