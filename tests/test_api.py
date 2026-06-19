@@ -81,6 +81,8 @@ def test_analyze_endpoint_returns_trace_and_alerts() -> None:
     assert payload["report"]["source_trust"]
     assert payload["report"]["trust_policy"]["fairness_rules"]
     assert payload["report"]["top_recommendations"][0]["price"]["effective_price_krw"] > 0
+    assert payload["quality_audit"]["quality_score"] > 0
+    assert payload["quality_audit"]["estimated_cost_krw"] > 0
     assert payload["trace_events"]
 
     trace_response = client.get(f"/traces/{payload['graph_trace_id']}")
@@ -186,6 +188,16 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
     assert payload["alert_subscriptions"] >= 1
     assert payload["alert_events"] >= 1
     assert payload["triggered_alerts"] >= 1
+    assert payload["average_quality_score"] > 0
+    assert payload["estimated_cost_krw"] > 0
+
+    quality = client.get("/ops/quality", headers=WORKSPACE_A)
+    assert quality.status_code == 200
+    quality_payload = quality.json()
+    assert quality_payload["audit_count"] >= 1
+    assert quality_payload["average_quality_score"] > 0
+    assert quality_payload["total_estimated_cost_krw"] > 0
+    assert any(item["trace_id"] == trace_id for item in quality_payload["recent_audits"])
 
 
 def test_alert_preview_endpoint_returns_three_targets() -> None:

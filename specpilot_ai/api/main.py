@@ -16,6 +16,7 @@ from specpilot_ai.core.models import (
     OperationsMetrics,
     PriceAlertPlan,
     ProductBrief,
+    QualityDashboard,
     ReviewDecision,
     ReviewDecisionRequest,
     ReviewQueueItem,
@@ -327,6 +328,14 @@ def operations_metrics(
     workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
 ) -> OperationsMetrics:
     return _store().metrics_for_workspace(workspace.workspace_id)
+
+
+@app.get("/ops/quality", response_model=QualityDashboard)
+def quality_dashboard(
+    limit: int = 20,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> QualityDashboard:
+    return _store().quality_dashboard_for_workspace(workspace.workspace_id, limit=limit)
 
 
 @app.get("/me", response_model=WorkspaceContext)

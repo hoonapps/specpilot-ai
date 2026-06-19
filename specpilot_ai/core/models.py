@@ -248,6 +248,31 @@ class AnalyzeResponse(BaseModel):
     report: PurchaseReport
     graph_trace_id: str
     trace_events: list[TraceEvent] = Field(default_factory=list)
+    quality_audit: "AnalysisQualityAudit | None" = None
+
+
+class AnalysisQualityAudit(BaseModel):
+    trace_id: str
+    quality_score: float = Field(ge=0, le=100)
+    estimated_source_calls: int = Field(ge=0)
+    estimated_llm_tokens: int = Field(ge=0)
+    estimated_cost_krw: float = Field(ge=0)
+    warning_count: int = Field(ge=0)
+    blocker_count: int = Field(ge=0)
+    citation_count: int = Field(ge=0)
+    review_required_sources: int = Field(ge=0)
+    launch_blockers: list[str] = Field(default_factory=list)
+    operator_notes: list[str] = Field(default_factory=list)
+
+
+class QualityDashboard(BaseModel):
+    workspace_id: str | None = None
+    audit_count: int
+    average_quality_score: float = 0
+    total_estimated_cost_krw: float = 0
+    warning_count: int = 0
+    blocker_count: int = 0
+    recent_audits: list[AnalysisQualityAudit] = Field(default_factory=list)
 
 
 class SaveReportRequest(BaseModel):
@@ -336,6 +361,8 @@ class OperationsMetrics(BaseModel):
     triggered_alerts: int = 0
     latest_trace_id: str | None = None
     average_top_score: float = 0
+    average_quality_score: float = 0
+    estimated_cost_krw: float = 0
     conversion_ready_rate: float = 0
 
 

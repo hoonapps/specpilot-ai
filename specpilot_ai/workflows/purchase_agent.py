@@ -38,6 +38,7 @@ from specpilot_ai.services.pricing import (
     price_timing_message,
     purchase_stability,
 )
+from specpilot_ai.services.quality import build_quality_audit
 from specpilot_ai.services.tracing import trace_event
 from specpilot_ai.services.trust import build_source_trust, build_trust_policy
 
@@ -486,13 +487,15 @@ def build_graph():
 
 def run_analysis(request: AnalyzeRequest) -> AnalyzeResponse:
     state = build_graph().invoke({"request": request})
-    return AnalyzeResponse(
+    response = AnalyzeResponse(
         criteria=state["criteria"],
         steps=state["steps"],
         report=state["report"],
         graph_trace_id=state["graph_trace_id"],
         trace_events=state["trace_events"],
     )
+    response.quality_audit = build_quality_audit(response)
+    return response
 
 
 def _purpose_fit(product: ProductCandidate, criteria: PurchaseCriteria) -> float:

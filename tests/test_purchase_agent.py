@@ -29,6 +29,10 @@ def test_desktop_pc_analysis_returns_top_three_and_compatibility_notes() -> None
     assert response.report.trust_policy is not None
     assert response.report.trust_policy.affiliate_disclosure
     assert any(source.evidence_count > 0 for source in response.report.source_trust)
+    assert response.quality_audit is not None
+    assert response.quality_audit.quality_score > 0
+    assert response.quality_audit.estimated_cost_krw > 0
+    assert response.quality_audit.trace_id == response.graph_trace_id
     assert response.report.final_pick_id == response.report.top_recommendations[0].product.id
     assert response.graph_trace_id.startswith("trace_")
 

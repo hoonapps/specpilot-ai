@@ -9,8 +9,10 @@ from specpilot_ai.core.models import (
     AlertDeliveryEvent,
     AlertEvaluationResponse,
     AlertSubscription,
+    AnalysisQualityAudit,
     AnalyzeResponse,
     OperationsMetrics,
+    QualityDashboard,
     ReviewDecision,
     ReviewQueueItem,
     ReviewStatus,
@@ -40,14 +42,17 @@ class SpecPilotStore:
         )
         top_model = top.product.model_name if top else None
         top_score = top.score.total_score if top else 0
+        audit = response.quality_audit
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT INTO analysis_runs (
                     trace_id, workspace_id, category, purpose, budget_krw, final_pick_id,
-                    top_model_name, top_score, response_json, created_at, updated_at
+                    top_model_name, top_score, quality_score, estimated_cost_krw,
+                    warning_count, blocker_count, quality_audit_json, response_json,
+                    created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(trace_id) DO UPDATE SET
                     workspace_id=excluded.workspace_id,
                     category=excluded.category,
@@ -56,6 +61,11 @@ class SpecPilotStore:
                     final_pick_id=excluded.final_pick_id,
                     top_model_name=excluded.top_model_name,
                     top_score=excluded.top_score,
+                    quality_score=excluded.quality_score,
+                    estimated_cost_krw=excluded.estimated_cost_krw,
+                    warning_count=excluded.warning_count,
+                    blocker_count=excluded.blocker_count,
+                    quality_audit_json=excluded.quality_audit_json,
                     response_json=excluded.response_json,
                     updated_at=excluded.updated_at
                 """,
@@ -68,6 +78,11 @@ class SpecPilotStore:
                     final_pick,
                     top_model,
                     top_score,
+                    audit.quality_score if audit else 0,
+                    audit.estimated_cost_krw if audit else 0,
+                    audit.warning_count if audit else 0,
+                    audit.blocker_count if audit else 0,
+                    audit.model_dump_json() if audit else "{}",
                     payload,
                     now,
                     now,
@@ -424,6 +439,50 @@ class SpecPilotStore:
             ).fetchall()
         return [_alert_event_from_row(row) for row in rows]
 
+    def quality_dashboard_for_workspace(
+        self,
+        workspace_id: str | None,
+        limit: int = 20,
+    ) -> QualityDashboard:
+        with self._connect() as conn:
+            where = " WHERE workspace_id = ?" if workspace_id else ""
+            params: tuple[str, ...] = (workspace_id,) if workspace_id else ()
+            summary = conn.execute(
+                f"""
+                SELECT
+                    COUNT(*) AS audit_count,
+                    AVG(quality_score) AS average_quality_score,
+                    SUM(estimated_cost_krw) AS total_estimated_cost_krw,
+                    SUM(warning_count) AS warning_count,
+                    SUM(blocker_count) AS blocker_count
+                FROM analysis_runs{where}
+                """,
+                params,
+            ).fetchone()
+            rows = conn.execute(
+                f"""
+                SELECT quality_audit_json
+                FROM analysis_runs{where}
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (*params, limit),
+            ).fetchall()
+        audits = [
+            AnalysisQualityAudit.model_validate_json(row["quality_audit_json"])
+            for row in rows
+            if row["quality_audit_json"] and row["quality_audit_json"] != "{}"
+        ]
+        return QualityDashboard(
+            workspace_id=workspace_id,
+            audit_count=int(summary["audit_count"] or 0),
+            average_quality_score=round(float(summary["average_quality_score"] or 0), 2),
+            total_estimated_cost_krw=round(float(summary["total_estimated_cost_krw"] or 0), 2),
+            warning_count=int(summary["warning_count"] or 0),
+            blocker_count=int(summary["blocker_count"] or 0),
+            recent_audits=audits,
+        )
+
     def add_review_items(self, items: list[ReviewQueueItem]) -> list[ReviewQueueItem]:
         with self._connect() as conn:
             for item in items:
@@ -545,6 +604,10 @@ class SpecPilotStore:
                 f"SELECT AVG(top_score) FROM analysis_runs{score_where}",
                 params,
             ).fetchone()
+            quality_row = conn.execute(
+                f"SELECT AVG(quality_score), SUM(estimated_cost_krw) FROM analysis_runs{where}",
+                params,
+            ).fetchone()
             ready_row = conn.execute(
                 f"""
                 SELECT AVG(CASE WHEN final_pick_id IS NOT NULL THEN 1.0 ELSE 0.0 END)
@@ -561,6 +624,8 @@ class SpecPilotStore:
             triggered_alerts=triggered_alerts,
             latest_trace_id=latest["trace_id"] if latest else None,
             average_top_score=round(float(score_row[0] or 0), 2),
+            average_quality_score=round(float(quality_row[0] or 0), 2),
+            estimated_cost_krw=round(float(quality_row[1] or 0), 2),
             conversion_ready_rate=round(float(ready_row[0] or 0), 4),
         )
 
@@ -577,6 +642,11 @@ class SpecPilotStore:
                     final_pick_id TEXT,
                     top_model_name TEXT,
                     top_score REAL NOT NULL DEFAULT 0,
+                    quality_score REAL NOT NULL DEFAULT 0,
+                    estimated_cost_krw REAL NOT NULL DEFAULT 0,
+                    warning_count INTEGER NOT NULL DEFAULT 0,
+                    blocker_count INTEGER NOT NULL DEFAULT 0,
+                    quality_audit_json TEXT NOT NULL DEFAULT '{}',
                     response_json TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
@@ -653,6 +723,16 @@ class SpecPilotStore:
                 """
             )
             _ensure_column(conn, "analysis_runs", "workspace_id", "TEXT NOT NULL DEFAULT 'demo'")
+            _ensure_column(conn, "analysis_runs", "quality_score", "REAL NOT NULL DEFAULT 0")
+            _ensure_column(conn, "analysis_runs", "estimated_cost_krw", "REAL NOT NULL DEFAULT 0")
+            _ensure_column(conn, "analysis_runs", "warning_count", "INTEGER NOT NULL DEFAULT 0")
+            _ensure_column(conn, "analysis_runs", "blocker_count", "INTEGER NOT NULL DEFAULT 0")
+            _ensure_column(
+                conn,
+                "analysis_runs",
+                "quality_audit_json",
+                "TEXT NOT NULL DEFAULT '{}'",
+            )
             _ensure_column(conn, "saved_reports", "workspace_id", "TEXT NOT NULL DEFAULT 'demo'")
             _ensure_column(
                 conn,
