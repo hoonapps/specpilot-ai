@@ -58,6 +58,7 @@ SpecPilot AI는 최저가 링크만 보여주는 쇼핑 도구가 아닙니다. 
 - 이메일/웹훅/SMS 알림 채널 설정, 발송 큐 dispatch, 발송 시도/재시도 기록
 - 추천 만족도 피드백, 구매 의향, 선택 후보 저장
 - 베타 신청 리드 저장과 개인정보 마스킹
+- 요금제/구독 의향 수집: Free/Premium/Team 요금제, 관심 등록, 예상 MRR, 연환산 매출, 전환 준비 액션 추적
 - 베타 출시 준비도 대시보드: 분석, 공유, 알림, 피드백, 리드, 품질 차단 사유를 launch readiness 점수로 집계
 - 출시 게이트: readiness, 품질 회귀, 학습 인사이트, 백로그 SLA, 전환/발송/외부 연동 운영 상태로 공개 go/no-go 판정
 - 베타 cohort 운영: 구매 시나리오별 리드, 피드백, 만족도, 구매 의향 집계
@@ -601,6 +602,36 @@ curl -X POST http://127.0.0.1:8000/beta/leads \
 
 ```bash
 curl http://127.0.0.1:8000/beta/leads \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY"
+```
+
+요금제와 구독 의향을 확인합니다. 구독 의향은 이메일 원문을 저장하지 않고 마스킹된 값, 희망 요금제, 결제 주기, 팀 규모, 최대 예산, 기능 우선순위, 예상 MRR만 남깁니다.
+
+```bash
+curl http://127.0.0.1:8000/pricing/plans \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY"
+```
+
+```bash
+curl -X POST http://127.0.0.1:8000/billing/subscription-intents \
+  -H "Content-Type: application/json" \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY" \
+  -d '{
+    "email": "buyer@example.com",
+    "plan_id": "premium",
+    "billing_cycle": "monthly",
+    "persona": "individual_buyer",
+    "use_case": "게이밍 PC 가격 알림과 결제 전 검수",
+    "team_size": 1,
+    "max_budget_krw": 20000,
+    "feature_priorities": ["가격 알림", "저장 견적 비교", "결제 전 검수"],
+    "purchase_timing": "within_30_days",
+    "source": "readme"
+  }'
+```
+
+```bash
+curl http://127.0.0.1:8000/ops/pricing-dashboard \
   -H "X-SpecPilot-Key: $SPECPILOT_KEY"
 ```
 

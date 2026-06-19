@@ -654,6 +654,71 @@ class BetaLead(BaseModel):
     created_at: str
 
 
+class PricingPlan(BaseModel):
+    plan_id: str
+    name: str
+    audience: str
+    monthly_price_krw: int = Field(ge=0)
+    annual_price_krw: int = Field(ge=0)
+    features: list[str] = Field(default_factory=list)
+    recommended_for: list[str] = Field(default_factory=list)
+    cta_label: str = "관심 등록"
+
+
+class SubscriptionIntentRequest(BaseModel):
+    email: str = Field(min_length=3)
+    plan_id: str = "premium"
+    billing_cycle: str = "monthly"
+    persona: str = "individual_buyer"
+    use_case: str = ""
+    team_size: int = Field(default=1, ge=1, le=10000)
+    max_budget_krw: int | None = Field(default=None, ge=0)
+    feature_priorities: list[str] = Field(default_factory=list)
+    purchase_timing: str = "within_30_days"
+    contact_consent: bool = True
+    source: str = "web"
+
+
+class SubscriptionIntent(BaseModel):
+    intent_id: str
+    workspace_id: str = "demo"
+    email_masked: str
+    plan_id: str
+    plan_name: str
+    billing_cycle: str
+    monthly_price_krw: int
+    estimated_mrr_krw: int
+    persona: str
+    use_case: str = ""
+    team_size: int = 1
+    max_budget_krw: int | None = None
+    feature_priorities: list[str] = Field(default_factory=list)
+    purchase_timing: str
+    contact_consent: bool
+    source: str
+    readiness_status: CheckStatus
+    recommendation: str
+    created_at: str
+
+
+class PricingDashboard(BaseModel):
+    workspace_id: str
+    generated_at: str
+    intent_count: int = 0
+    premium_intent_count: int = 0
+    team_intent_count: int = 0
+    estimated_mrr_krw: int = 0
+    annualized_revenue_krw: int = 0
+    average_budget_krw: float = 0
+    top_plan_id: str | None = None
+    top_plan_name: str | None = None
+    readiness_status: CheckStatus
+    summary: str
+    next_actions: list[str] = Field(default_factory=list)
+    plans: list[PricingPlan] = Field(default_factory=list)
+    recent_intents: list[SubscriptionIntent] = Field(default_factory=list)
+
+
 class BetaCohortRequest(BaseModel):
     name: str = Field(min_length=2)
     scenario: str = Field(min_length=2)
@@ -1247,6 +1312,9 @@ class OperationsMetrics(BaseModel):
     trace_spans: int = 0
     feedback_count: int = 0
     beta_leads: int = 0
+    subscription_intents: int = 0
+    premium_subscription_intents: int = 0
+    estimated_mrr_krw: int = 0
     latest_trace_id: str | None = None
     average_top_score: float = 0
     average_quality_score: float = 0

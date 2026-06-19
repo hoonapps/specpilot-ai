@@ -64,6 +64,8 @@ from specpilot_ai.core.models import (
     OpsLearningInsight,
     OpsRegressionDashboard,
     OpsRegressionPeriod,
+    PricingDashboard,
+    PricingPlan,
     ProviderReliabilityMetric,
     ProviderReviewStatus,
     PublicReport,
@@ -88,6 +90,8 @@ from specpilot_ai.core.models import (
     SourceProviderPolicy,
     SourceProviderPolicyRequest,
     SourceRefreshRun,
+    SubscriptionIntent,
+    SubscriptionIntentRequest,
     TraceEvent,
     TraceRunSummary,
     TraceSpanRecord,
@@ -2304,6 +2308,132 @@ class SpecPilotStore:
             ).fetchall()
         return [_beta_lead_from_row(row) for row in rows]
 
+    def create_subscription_intent_for_workspace(
+        self,
+        workspace_id: str,
+        request: SubscriptionIntentRequest,
+    ) -> SubscriptionIntent | None:
+        plan = pricing_plan_by_id(request.plan_id)
+        if plan is None:
+            return None
+        now = _now()
+        billing_cycle = _billing_cycle(request.billing_cycle)
+        estimated_mrr = _estimated_subscription_mrr(plan, billing_cycle, request.team_size)
+        readiness_status, recommendation = _subscription_intent_readiness(
+            plan,
+            request,
+            estimated_mrr,
+        )
+        intent = SubscriptionIntent(
+            intent_id=f"subintent_{uuid4().hex[:12]}",
+            workspace_id=workspace_id,
+            email_masked=_mask_contact(request.email),
+            plan_id=plan.plan_id,
+            plan_name=plan.name,
+            billing_cycle=billing_cycle,
+            monthly_price_krw=plan.monthly_price_krw,
+            estimated_mrr_krw=estimated_mrr,
+            persona=request.persona,
+            use_case=request.use_case,
+            team_size=request.team_size,
+            max_budget_krw=request.max_budget_krw,
+            feature_priorities=request.feature_priorities,
+            purchase_timing=request.purchase_timing,
+            contact_consent=request.contact_consent,
+            source=request.source,
+            readiness_status=readiness_status,
+            recommendation=recommendation,
+            created_at=now,
+        )
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO subscription_intents (
+                    intent_id, workspace_id, email_masked, plan_id, plan_name,
+                    billing_cycle, monthly_price_krw, estimated_mrr_krw, persona,
+                    use_case, team_size, max_budget_krw, feature_priorities_json,
+                    purchase_timing, contact_consent, source, readiness_status,
+                    recommendation, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    intent.intent_id,
+                    intent.workspace_id,
+                    intent.email_masked,
+                    intent.plan_id,
+                    intent.plan_name,
+                    intent.billing_cycle,
+                    intent.monthly_price_krw,
+                    intent.estimated_mrr_krw,
+                    intent.persona,
+                    intent.use_case,
+                    intent.team_size,
+                    intent.max_budget_krw,
+                    json.dumps(intent.feature_priorities, ensure_ascii=False),
+                    intent.purchase_timing,
+                    1 if intent.contact_consent else 0,
+                    intent.source,
+                    intent.readiness_status.value,
+                    intent.recommendation,
+                    intent.created_at,
+                ),
+            )
+        return intent
+
+    def list_subscription_intents_for_workspace(
+        self,
+        workspace_id: str,
+        limit: int = 50,
+    ) -> list[SubscriptionIntent]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM subscription_intents
+                WHERE workspace_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (workspace_id, limit),
+            ).fetchall()
+        return [_subscription_intent_from_row(row) for row in rows]
+
+    def pricing_dashboard_for_workspace(self, workspace_id: str) -> PricingDashboard:
+        intents = self.list_subscription_intents_for_workspace(workspace_id, limit=200)
+        intent_count = len(intents)
+        premium_count = sum(1 for item in intents if item.plan_id == "premium")
+        team_count = sum(1 for item in intents if item.plan_id == "team")
+        estimated_mrr = sum(item.estimated_mrr_krw for item in intents)
+        budgets = [item.max_budget_krw for item in intents if item.max_budget_krw is not None]
+        plan_counts: dict[str, int] = {}
+        for item in intents:
+            plan_counts[item.plan_id] = plan_counts.get(item.plan_id, 0) + 1
+        top_plan_id = max(plan_counts, key=plan_counts.get) if plan_counts else None
+        top_plan = pricing_plan_by_id(top_plan_id) if top_plan_id else None
+        status, next_actions = _pricing_dashboard_status(intent_count, estimated_mrr, intents)
+        summary = (
+            f"구독 의향 {intent_count}건, 예상 MRR {estimated_mrr:,}원, "
+            f"연환산 {estimated_mrr * 12:,}원입니다."
+        )
+        return PricingDashboard(
+            workspace_id=workspace_id,
+            generated_at=_now(),
+            intent_count=intent_count,
+            premium_intent_count=premium_count,
+            team_intent_count=team_count,
+            estimated_mrr_krw=estimated_mrr,
+            annualized_revenue_krw=estimated_mrr * 12,
+            average_budget_krw=round(sum(budgets) / len(budgets), 2) if budgets else 0,
+            top_plan_id=top_plan.plan_id if top_plan else None,
+            top_plan_name=top_plan.name if top_plan else None,
+            readiness_status=status,
+            summary=summary,
+            next_actions=next_actions,
+            plans=pricing_plans(),
+            recent_intents=intents[:20],
+        )
+
     def create_beta_cohort_for_workspace(
         self,
         workspace_id: str,
@@ -3304,6 +3434,22 @@ class SpecPilotStore:
                 f"SELECT COUNT(*) FROM beta_leads{where}",
                 params,
             ).fetchone()[0]
+            subscription_intents = conn.execute(
+                f"SELECT COUNT(*) FROM subscription_intents{where}",
+                params,
+            ).fetchone()[0]
+            premium_subscription_intents = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM subscription_intents{where}
+                {' AND ' if where else ' WHERE '}plan_id IN ('premium', 'team')
+                """,
+                params,
+            ).fetchone()[0]
+            estimated_mrr_row = conn.execute(
+                f"SELECT SUM(estimated_mrr_krw) FROM subscription_intents{where}",
+                params,
+            ).fetchone()
             alert_events = conn.execute(
                 f"SELECT COUNT(*) FROM alert_delivery_events{where}",
                 params,
@@ -3593,6 +3739,9 @@ class SpecPilotStore:
             trace_spans=trace_spans,
             feedback_count=feedback_count,
             beta_leads=beta_leads,
+            subscription_intents=subscription_intents,
+            premium_subscription_intents=premium_subscription_intents,
+            estimated_mrr_krw=int(estimated_mrr_row[0] or 0),
             latest_trace_id=latest["trace_id"] if latest else None,
             average_top_score=round(float(score_row[0] or 0), 2),
             average_quality_score=round(float(quality_row[0] or 0), 2),
@@ -4236,6 +4385,28 @@ class SpecPilotStore:
                     created_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS subscription_intents (
+                    intent_id TEXT PRIMARY KEY,
+                    workspace_id TEXT NOT NULL DEFAULT 'demo',
+                    email_masked TEXT NOT NULL,
+                    plan_id TEXT NOT NULL,
+                    plan_name TEXT NOT NULL,
+                    billing_cycle TEXT NOT NULL,
+                    monthly_price_krw INTEGER NOT NULL DEFAULT 0,
+                    estimated_mrr_krw INTEGER NOT NULL DEFAULT 0,
+                    persona TEXT NOT NULL,
+                    use_case TEXT NOT NULL DEFAULT '',
+                    team_size INTEGER NOT NULL DEFAULT 1,
+                    max_budget_krw INTEGER,
+                    feature_priorities_json TEXT NOT NULL DEFAULT '[]',
+                    purchase_timing TEXT NOT NULL,
+                    contact_consent INTEGER NOT NULL DEFAULT 1,
+                    source TEXT NOT NULL,
+                    readiness_status TEXT NOT NULL,
+                    recommendation TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS beta_cohorts (
                     cohort_id TEXT PRIMARY KEY,
                     workspace_id TEXT NOT NULL DEFAULT 'demo',
@@ -4337,6 +4508,8 @@ class SpecPilotStore:
                     ON user_feedback(trace_id);
                 CREATE INDEX IF NOT EXISTS idx_beta_leads_workspace
                     ON beta_leads(workspace_id);
+                CREATE INDEX IF NOT EXISTS idx_subscription_intents_workspace
+                    ON subscription_intents(workspace_id, plan_id, created_at);
                 CREATE INDEX IF NOT EXISTS idx_beta_cohorts_workspace
                     ON beta_cohorts(workspace_id, active);
                 CREATE INDEX IF NOT EXISTS idx_beta_backlog_actions_workspace
@@ -5513,6 +5686,138 @@ def _beta_lead_from_row(row: sqlite3.Row) -> BetaLead:
         source=data["source"],
         created_at=data["created_at"],
     )
+
+
+def _subscription_intent_from_row(row: sqlite3.Row) -> SubscriptionIntent:
+    data = dict(row)
+    return SubscriptionIntent(
+        intent_id=data["intent_id"],
+        workspace_id=data["workspace_id"],
+        email_masked=data["email_masked"],
+        plan_id=data["plan_id"],
+        plan_name=data["plan_name"],
+        billing_cycle=data["billing_cycle"],
+        monthly_price_krw=data["monthly_price_krw"],
+        estimated_mrr_krw=data["estimated_mrr_krw"],
+        persona=data["persona"],
+        use_case=data["use_case"],
+        team_size=data["team_size"],
+        max_budget_krw=data["max_budget_krw"],
+        feature_priorities=json.loads(data["feature_priorities_json"]),
+        purchase_timing=data["purchase_timing"],
+        contact_consent=bool(data["contact_consent"]),
+        source=data["source"],
+        readiness_status=CheckStatus(data["readiness_status"]),
+        recommendation=data["recommendation"],
+        created_at=data["created_at"],
+    )
+
+
+def pricing_plans() -> list[PricingPlan]:
+    return [
+        PricingPlan(
+            plan_id="free",
+            name="Free 리포트",
+            audience="가끔 PC나 노트북을 비교하는 개인",
+            monthly_price_krw=0,
+            annual_price_krw=0,
+            features=[
+                "기본 추천 리포트",
+                "공유 리포트",
+                "구매 전 체크리스트",
+            ],
+            recommended_for=["첫 구매자", "가벼운 비교"],
+            cta_label="무료로 시작",
+        ),
+        PricingPlan(
+            plan_id="premium",
+            name="Premium 구매 코치",
+            audience="가격 알림과 상세 근거가 필요한 개인 구매자",
+            monthly_price_krw=9900,
+            annual_price_krw=99000,
+            features=[
+                "상세 근거 팩",
+                "가격 알림",
+                "저장 견적 비교",
+                "결제 전 검수 기록",
+            ],
+            recommended_for=["게이밍 PC", "영상 편집 PC", "고가 노트북"],
+            cta_label="프리미엄 관심 등록",
+        ),
+        PricingPlan(
+            plan_id="team",
+            name="Team 구매 보조",
+            audience="사무용 PC와 노트북을 반복 구매하는 팀",
+            monthly_price_krw=49000,
+            annual_price_krw=490000,
+            features=[
+                "팀 공유 리포트",
+                "구매 결과 학습 인사이트",
+                "완료 리포트 발송",
+                "운영 대시보드",
+            ],
+            recommended_for=["스타트업", "사무 장비 구매", "B2B 구매 담당자"],
+            cta_label="팀 도입 문의",
+        ),
+    ]
+
+
+def pricing_plan_by_id(plan_id: str | None) -> PricingPlan | None:
+    normalized = (plan_id or "").strip().lower()
+    return next((plan for plan in pricing_plans() if plan.plan_id == normalized), None)
+
+
+def _billing_cycle(value: str) -> str:
+    normalized = value.strip().lower()
+    if normalized in {"annual", "yearly", "year"}:
+        return "annual"
+    return "monthly"
+
+
+def _estimated_subscription_mrr(
+    plan: PricingPlan,
+    billing_cycle: str,
+    team_size: int,
+) -> int:
+    if plan.plan_id == "free":
+        return 0
+    if billing_cycle == "annual":
+        return int(round(plan.annual_price_krw / 12))
+    multiplier = max(1, team_size if plan.plan_id == "team" else 1)
+    return plan.monthly_price_krw * multiplier
+
+
+def _subscription_intent_readiness(
+    plan: PricingPlan,
+    request: SubscriptionIntentRequest,
+    estimated_mrr: int,
+) -> tuple[CheckStatus, str]:
+    if plan.plan_id == "free":
+        return CheckStatus.warning, "무료 사용자는 프리미엄 전환 조건을 후속 질문으로 확인하세요."
+    if request.max_budget_krw is not None and request.max_budget_krw < estimated_mrr:
+        return CheckStatus.warning, "희망 예산이 요금제보다 낮아 가격/기능 패키지를 재검토하세요."
+    if request.purchase_timing in {"now", "within_7_days", "within_30_days"}:
+        return CheckStatus.ok, "즉시 전환 가능성이 있어 온보딩과 결제 연결 우선순위가 높습니다."
+    return CheckStatus.warning, "구매 시점이 멀어 리마인더와 사용 사례 검증이 필요합니다."
+
+
+def _pricing_dashboard_status(
+    intent_count: int,
+    estimated_mrr: int,
+    intents: list[SubscriptionIntent],
+) -> tuple[CheckStatus, list[str]]:
+    actions: list[str] = []
+    if intent_count < 5:
+        actions.append("대표 persona별 구독 의향을 최소 5건 이상 수집하세요.")
+    if estimated_mrr < 100_000:
+        actions.append("프리미엄/팀 요금제 메시지를 개선해 예상 MRR 10만원 이상을 검증하세요.")
+    if not any(item.plan_id == "team" for item in intents):
+        actions.append("B2B 구매 보조 수요를 확인할 team plan 리드를 확보하세요.")
+    if not actions:
+        return CheckStatus.ok, ["결제 연동 전환 실험을 준비하세요."]
+    if intent_count == 0:
+        return CheckStatus.blocker, actions
+    return CheckStatus.warning, actions
 
 
 def _beta_cohort_from_row(row: sqlite3.Row) -> BetaCohort:

@@ -63,6 +63,8 @@ from specpilot_ai.core.models import (
     OpsLearningDashboard,
     OpsRegressionDashboard,
     PriceAlertPlan,
+    PricingDashboard,
+    PricingPlan,
     ProductBrief,
     PublicReport,
     PurchaseLink,
@@ -96,6 +98,8 @@ from specpilot_ai.core.models import (
     SourceSchedulePreview,
     SourceUrlIngestRequest,
     SourceUrlIngestResponse,
+    SubscriptionIntent,
+    SubscriptionIntentRequest,
     TraceEvent,
     TraceRunSummary,
     TraceSpanRecord,
@@ -108,7 +112,7 @@ from specpilot_ai.services.intake import diagnose_intake
 from specpilot_ai.services.trust import build_trust_policy
 from specpilot_ai.sources.collector import SourceCollector
 from specpilot_ai.sources.url_ingestion import ingest_source_url
-from specpilot_ai.storage.sqlite_store import SpecPilotStore
+from specpilot_ai.storage.sqlite_store import SpecPilotStore, pricing_plans
 from specpilot_ai.web.admin_page import admin_page_html
 from specpilot_ai.web.launch_page import launch_page_html
 from specpilot_ai.web.public_report_page import public_report_html
@@ -946,6 +950,43 @@ def dispatch_observability_exports(
 @app.get("/me", response_model=WorkspaceContext)
 def me(workspace: WorkspaceContext = WORKSPACE_DEPENDENCY) -> WorkspaceContext:
     return workspace
+
+
+@app.get("/pricing/plans", response_model=list[PricingPlan])
+def list_pricing_plans() -> list[PricingPlan]:
+    return pricing_plans()
+
+
+@app.post("/billing/subscription-intents", response_model=SubscriptionIntent)
+def create_subscription_intent(
+    request: SubscriptionIntentRequest,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> SubscriptionIntent:
+    intent = _store().create_subscription_intent_for_workspace(
+        workspace.workspace_id,
+        request,
+    )
+    if intent is None:
+        raise HTTPException(status_code=404, detail="요금제를 찾을 수 없습니다.")
+    return intent
+
+
+@app.get("/billing/subscription-intents", response_model=list[SubscriptionIntent])
+def list_subscription_intents(
+    limit: int = 50,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> list[SubscriptionIntent]:
+    return _store().list_subscription_intents_for_workspace(
+        workspace.workspace_id,
+        limit=limit,
+    )
+
+
+@app.get("/ops/pricing-dashboard", response_model=PricingDashboard)
+def pricing_dashboard(
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> PricingDashboard:
+    return _store().pricing_dashboard_for_workspace(workspace.workspace_id)
 
 
 @app.post("/feedback", response_model=FeedbackRecord)

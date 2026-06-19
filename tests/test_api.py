@@ -30,6 +30,7 @@ def test_launch_page_exposes_product_ui() -> None:
     assert "판매자 확인 질문" in response.text
     assert "피드백 보내기" in response.text
     assert "베타 신청" in response.text
+    assert "요금제 관심" in response.text
 
 
 def test_health_and_ready_endpoints_expose_operations_state() -> None:
@@ -89,6 +90,9 @@ def test_admin_page_exposes_review_console() -> None:
     assert "learning-insights" in response.text
     assert "출시 게이트" in response.text
     assert "launch-gate" in response.text
+    assert "요금제/구독 의향" in response.text
+    assert "pricing-dashboard" in response.text
+    assert "subscription-intents" in response.text
     assert "외부 연동 준비도" in response.text
     assert "integration-readiness" in response.text
     assert "핵심 연동 등록" in response.text
@@ -102,6 +106,96 @@ def test_admin_page_exposes_review_console() -> None:
     assert "SLA 상태" in response.text
     assert "cohort 리포트 export" in response.text
     assert "운영 상태" in response.text
+
+
+def test_pricing_plans_subscription_intents_and_dashboard() -> None:
+    workspace_a = {"X-SpecPilot-Key": f"pytest-pricing-a-{uuid4().hex}"}
+    workspace_b = {"X-SpecPilot-Key": f"pytest-pricing-b-{uuid4().hex}"}
+
+    plans = client.get("/pricing/plans")
+    assert plans.status_code == 200
+    plan_ids = {item["plan_id"] for item in plans.json()}
+    assert {"free", "premium", "team"} <= plan_ids
+
+    premium_intent = client.post(
+        "/billing/subscription-intents",
+        headers=workspace_a,
+        json={
+            "email": "premium-buyer@example.com",
+            "plan_id": "premium",
+            "billing_cycle": "monthly",
+            "persona": "individual_buyer",
+            "use_case": "게이밍 PC 가격 알림과 결제 전 검수",
+            "team_size": 1,
+            "max_budget_krw": 20_000,
+            "feature_priorities": ["가격 알림", "저장 견적 비교"],
+            "purchase_timing": "within_7_days",
+            "source": "pytest-pricing",
+        },
+    )
+    assert premium_intent.status_code == 200
+    premium_payload = premium_intent.json()
+    assert premium_payload["plan_id"] == "premium"
+    assert premium_payload["estimated_mrr_krw"] == 9900
+    assert premium_payload["readiness_status"] == "ok"
+    assert premium_payload["email_masked"] == "pr***@example.com"
+
+    team_intent = client.post(
+        "/billing/subscription-intents",
+        headers=workspace_a,
+        json={
+            "email": "it-admin@example.com",
+            "plan_id": "team",
+            "billing_cycle": "monthly",
+            "persona": "it_admin",
+            "use_case": "사무용 노트북 반복 구매와 팀 리포트",
+            "team_size": 3,
+            "max_budget_krw": 200_000,
+            "feature_priorities": ["팀 공유 리포트", "구매 결과 학습"],
+            "purchase_timing": "within_30_days",
+            "source": "pytest-pricing",
+        },
+    )
+    assert team_intent.status_code == 200
+    assert team_intent.json()["plan_id"] == "team"
+    assert team_intent.json()["estimated_mrr_krw"] == 147_000
+
+    invalid_plan = client.post(
+        "/billing/subscription-intents",
+        headers=workspace_a,
+        json={"email": "buyer@example.com", "plan_id": "enterprise"},
+    )
+    assert invalid_plan.status_code == 404
+
+    intents = client.get("/billing/subscription-intents", headers=workspace_a)
+    assert intents.status_code == 200
+    assert {item["intent_id"] for item in intents.json()} >= {
+        premium_payload["intent_id"],
+        team_intent.json()["intent_id"],
+    }
+
+    isolated_intents = client.get("/billing/subscription-intents", headers=workspace_b)
+    assert isolated_intents.status_code == 200
+    assert all(item["source"] != "pytest-pricing" for item in isolated_intents.json())
+
+    dashboard = client.get("/ops/pricing-dashboard", headers=workspace_a)
+    assert dashboard.status_code == 200
+    dashboard_payload = dashboard.json()
+    assert dashboard_payload["intent_count"] == 2
+    assert dashboard_payload["premium_intent_count"] == 1
+    assert dashboard_payload["team_intent_count"] == 1
+    assert dashboard_payload["estimated_mrr_krw"] == 156_900
+    assert dashboard_payload["annualized_revenue_krw"] == 1_882_800
+    assert dashboard_payload["recent_intents"]
+    assert dashboard_payload["readiness_status"] in {"ok", "warning"}
+    assert dashboard_payload["next_actions"]
+
+    metrics = client.get("/ops/metrics", headers=workspace_a)
+    assert metrics.status_code == 200
+    metrics_payload = metrics.json()
+    assert metrics_payload["subscription_intents"] == 2
+    assert metrics_payload["premium_subscription_intents"] == 2
+    assert metrics_payload["estimated_mrr_krw"] == 156_900
 
 
 def test_trust_policy_endpoint_exposes_cache_and_fairness_rules() -> None:

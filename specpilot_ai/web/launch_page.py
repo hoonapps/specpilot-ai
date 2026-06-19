@@ -397,6 +397,7 @@ def launch_page_html() -> str:
             <button class="secondary mini-action" type="button" id="test-alert">목표가 도달 테스트</button>
             <button class="secondary mini-action" type="button" id="submit-feedback">피드백 보내기</button>
             <button class="secondary mini-action" type="button" id="join-beta">베타 신청</button>
+            <button class="secondary mini-action" type="button" id="join-premium">요금제 관심</button>
             <button class="secondary mini-action" type="button" id="view-metrics">운영 지표</button>
           </div>
         </div>
@@ -670,10 +671,32 @@ def launch_page_html() -> str:
         alert(`베타 신청 완료: ${lead.lead_id}`);
       });
 
+      document.querySelector('#join-premium')?.addEventListener('click', async () => {
+        const response = await fetch('/billing/subscription-intents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: 'premium@example.com',
+            plan_id: document.querySelector('#category').value === 'laptop' ? 'premium' : 'team',
+            billing_cycle: 'monthly',
+            persona: document.querySelector('#category').value === 'laptop' ? 'mobile_creator' : 'pc_buyer',
+            use_case: document.querySelector('#query').value,
+            team_size: document.querySelector('#category').value === 'laptop' ? 1 : 3,
+            max_budget_krw: 50000,
+            feature_priorities: ['가격 알림', '저장 견적 비교', '결제 전 검수'],
+            purchase_timing: 'within_30_days',
+            contact_consent: true,
+            source: 'launch_page'
+          })
+        });
+        const intent = await response.json();
+        alert(`요금제 관심 등록 완료: ${intent.intent_id} / 예상 MRR ${intent.estimated_mrr_krw.toLocaleString()}원`);
+      });
+
       document.querySelector('#view-metrics')?.addEventListener('click', async () => {
         const response = await fetch('/ops/metrics');
         const metrics = await response.json();
-        alert(`분석 ${metrics.analysis_runs}건 / 저장 ${metrics.saved_reports}건 / 알림 ${metrics.alert_subscriptions}건 / 발송 이벤트 ${metrics.alert_events}건 / 피드백 ${metrics.feedback_count}건 / 베타 ${metrics.beta_leads}건`);
+        alert(`분석 ${metrics.analysis_runs}건 / 저장 ${metrics.saved_reports}건 / 알림 ${metrics.alert_subscriptions}건 / 발송 이벤트 ${metrics.alert_events}건 / 피드백 ${metrics.feedback_count}건 / 베타 ${metrics.beta_leads}건 / 구독의향 ${metrics.subscription_intents}건 / 예상 MRR ${metrics.estimated_mrr_krw.toLocaleString()}원`);
       });
     }
 

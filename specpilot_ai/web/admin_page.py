@@ -133,6 +133,13 @@ def admin_page_html() -> str:
       <div class="quality-list" id="launch-gate-checks" style="margin-top:12px"></div>
     </section>
     <section class="panel" style="margin-top:14px">
+      <h2>요금제/구독 의향</h2>
+      <p>Free, Premium, Team 요금제별 관심 등록과 예상 MRR을 추적해 결제 연동 전 수요를 검증합니다.</p>
+      <div class="grid cards" id="pricing-dashboard-summary"></div>
+      <div class="quality-list" id="pricing-dashboard-actions" style="margin-top:12px"></div>
+      <div class="review-list" id="subscription-intents" style="margin-top:12px"></div>
+    </section>
+    <section class="panel" style="margin-top:14px">
       <h2>외부 연동 준비도</h2>
       <p>가격 API, 오픈마켓, 공식 스토어, 이메일, 관측성, 스케줄러 등 공개 전 필수 연동의 credential/rate limit/검증 상태를 확인합니다.</p>
       <div class="actions">
@@ -297,6 +304,7 @@ def admin_page_html() -> str:
         betaBacklogResponse,
         betaBacklogSummaryResponse,
         regressionResponse,
+        pricingDashboardResponse,
         learningInsightResponse,
         observabilityResponse,
         completionBatchResponse,
@@ -327,6 +335,7 @@ def admin_page_html() -> str:
         fetch('/beta/backlog'),
         fetch('/beta/backlog/summary'),
         fetch('/ops/regression'),
+        fetch('/ops/pricing-dashboard'),
         fetch('/ops/learning-insights'),
         fetch('/ops/observability/exports'),
         fetch('/reports/completion-batches'),
@@ -357,6 +366,7 @@ def admin_page_html() -> str:
       const betaBacklog = await betaBacklogResponse.json();
       const betaBacklogSummary = await betaBacklogSummaryResponse.json();
       const regression = await regressionResponse.json();
+      const pricingDashboard = await pricingDashboardResponse.json();
       const learningInsights = await learningInsightResponse.json();
       const observabilityExports = await observabilityResponse.json();
       const completionBatches = await completionBatchResponse.json();
@@ -371,6 +381,7 @@ def admin_page_html() -> str:
       renderMetrics(data.metrics);
       renderBetaReadiness(readiness);
       renderLaunchGate(launchGate);
+      renderPricingDashboard(pricingDashboard);
       renderIntegrationReadiness(integrationReadiness);
       renderIntegrationProviders(integrationProviders);
       renderSources(data.adapter_statuses);
@@ -433,6 +444,9 @@ def admin_page_html() -> str:
         ['실구매 전환', Math.round(metrics.purchase_conversion_rate * 100) + '%'],
         ['최종가 차이', Math.round(metrics.average_final_price_delta_krw) + '원'],
         ['전환 금액', Math.round(metrics.purchase_outcome_value_krw) + '원'],
+        ['구독 의향', metrics.subscription_intents],
+        ['유료 의향', metrics.premium_subscription_intents],
+        ['예상 MRR', Math.round(metrics.estimated_mrr_krw) + '원'],
         ['URL 모니터', metrics.source_monitors],
         ['소스 refresh', metrics.source_refresh_runs],
         ['refresh 실패', metrics.source_refresh_failures],
@@ -509,6 +523,44 @@ def admin_page_html() -> str:
           <ul>${requiredActions.length ? requiredActions.map((item) => `<li>${item}</li>`).join('') : '<li>현재 기준으로 공개 전 필수 액션이 없습니다.</li>'}</ul>
         </article>
       `;
+    }
+
+    function renderPricingDashboard(dashboard) {
+      document.querySelector('#pricing-dashboard-summary').innerHTML = [
+        ['상태', dashboard.readiness_status],
+        ['구독 의향', dashboard.intent_count],
+        ['Premium', dashboard.premium_intent_count],
+        ['Team', dashboard.team_intent_count],
+        ['예상 MRR', Math.round(dashboard.estimated_mrr_krw) + '원'],
+        ['연환산', Math.round(dashboard.annualized_revenue_krw) + '원'],
+        ['평균 예산', Math.round(dashboard.average_budget_krw) + '원'],
+        ['상위 요금제', dashboard.top_plan_name || '-']
+      ].map(([label, value]) => `<div class="card"><span class="kicker">${label}</span><div class="metric">${value}</div></div>`).join('');
+      const tone = dashboard.readiness_status === 'blocker' ? 'danger' : dashboard.readiness_status === 'warning' ? 'warn' : '';
+      document.querySelector('#pricing-dashboard-actions').innerHTML = `
+        <article class="review-item quality-item ${tone}">
+          <span class="kicker">pricing-dashboard · ${dashboard.readiness_status}</span>
+          <h3>${dashboard.summary}</h3>
+          <ul>${(dashboard.next_actions || []).map((item) => `<li>${item}</li>`).join('') || '<li>결제 연동 전환 실험을 준비하세요.</li>'}</ul>
+        </article>
+      `;
+      const plans = (dashboard.plans || []).map((plan) => `
+        <article class="review-item">
+          <span class="kicker">${plan.plan_id} · ${Math.round(plan.monthly_price_krw).toLocaleString()}원/월</span>
+          <h3>${plan.name}</h3>
+          <p>${plan.audience}</p>
+          <p>${(plan.features || []).join(' · ')}</p>
+        </article>
+      `).join('');
+      const intents = (dashboard.recent_intents || []).map((intent) => `
+        <article class="review-item quality-item ${intent.readiness_status === 'ok' ? '' : 'warn'}">
+          <span class="kicker">${intent.plan_name} · ${intent.billing_cycle} · ${intent.created_at}</span>
+          <h3>${intent.email_masked} · 예상 MRR ${Math.round(intent.estimated_mrr_krw).toLocaleString()}원</h3>
+          <p>${intent.use_case || '사용 맥락 미입력'}</p>
+          <p>${intent.recommendation}</p>
+        </article>
+      `).join('');
+      document.querySelector('#subscription-intents').innerHTML = intents || plans || '<article class="review-item"><h3>구독 의향 없음</h3><p>제품 화면에서 요금제 관심을 수집하세요.</p></article>';
     }
 
     function renderIntegrationReadiness(readiness) {
