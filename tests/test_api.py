@@ -14,6 +14,7 @@ def test_launch_page_exposes_product_ui() -> None:
     assert "SpecPilot AI" in response.text
     assert "분석 실행" in response.text
     assert "목표가 도달 테스트" in response.text
+    assert "공유 링크 생성" in response.text
     assert "피드백 보내기" in response.text
     assert "베타 신청" in response.text
 

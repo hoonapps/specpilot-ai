@@ -224,6 +224,7 @@ def launch_page_html() -> str:
     const results = document.querySelector('#results');
     const laptopDemo = document.querySelector('#laptop-demo');
     let latestAnalysis = null;
+    let latestSavedReport = null;
 
     function splitInput(value) {
       return value.split(',').map((item) => item.trim()).filter(Boolean);
@@ -247,6 +248,7 @@ def launch_page_html() -> str:
 
     function render(data) {
       latestAnalysis = data;
+      latestSavedReport = null;
       const report = data.report;
       const topCards = report.top_recommendations.map((rec) => `
         <article class="card">
@@ -299,6 +301,7 @@ def launch_page_html() -> str:
           <p>${report.purchase_timing}</p>
           <div class="actions">
             <button class="primary mini-action" type="button" id="save-report">리포트 저장</button>
+            <button class="secondary mini-action" type="button" id="share-report">공유 링크 생성</button>
             <button class="secondary mini-action" type="button" id="subscribe-alert">1순위 가격 알림</button>
             <button class="secondary mini-action" type="button" id="test-alert">목표가 도달 테스트</button>
             <button class="secondary mini-action" type="button" id="submit-feedback">피드백 보내기</button>
@@ -349,19 +352,40 @@ def launch_page_html() -> str:
       return top || alertProduct || null;
     }
 
+    async function saveCurrentReport() {
+      if (latestSavedReport?.trace_id === latestAnalysis.graph_trace_id) {
+        return latestSavedReport;
+      }
+      const response = await fetch('/reports/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trace_id: latestAnalysis.graph_trace_id,
+          owner_label: 'demo-user',
+          notes: '웹 UI에서 저장한 구매 리포트'
+        })
+      });
+      latestSavedReport = await response.json();
+      return latestSavedReport;
+    }
+
     function bindResultActions() {
       document.querySelector('#save-report')?.addEventListener('click', async () => {
-        const response = await fetch('/reports/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            trace_id: latestAnalysis.graph_trace_id,
-            owner_label: 'demo-user',
-            notes: '웹 UI에서 저장한 구매 리포트'
-          })
-        });
-        const saved = await response.json();
+        const saved = await saveCurrentReport();
         alert(`저장 완료: ${saved.report_id}`);
+      });
+
+      document.querySelector('#share-report')?.addEventListener('click', async () => {
+        const saved = await saveCurrentReport();
+        const response = await fetch(`/reports/${saved.report_id}/share`, {
+          method: 'POST'
+        });
+        const share = await response.json();
+        const url = `${window.location.origin}${share.public_path}`;
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(url);
+        }
+        alert(`공유 링크 생성 완료: ${url}`);
       });
 
       document.querySelector('#subscribe-alert')?.addEventListener('click', async () => {
