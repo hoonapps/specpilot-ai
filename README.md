@@ -90,11 +90,23 @@ curl http://127.0.0.1:8000/ready
 
 ## 대표 API
 
+베타 공개용 API는 `X-SpecPilot-Key` 헤더로 워크스페이스를 구분합니다. 헤더를 생략하면 데모 워크스페이스(`demo`)로 동작합니다.
+
+```bash
+export SPECPILOT_KEY=specpilot-demo-key
+```
+
+```bash
+curl http://127.0.0.1:8000/me \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY"
+```
+
 ### 분석 실행
 
 ```bash
 curl -X POST http://127.0.0.1:8000/analyze \
   -H "Content-Type: application/json" \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY" \
   -d '{
     "query": "영상 편집과 게임용 데스크톱 200만원 안에서 맞춰줘. QHD 144Hz 모니터를 쓰고 업그레이드 여지도 있었으면 좋겠어.",
     "category": "desktop_pc",
@@ -111,6 +123,7 @@ curl -X POST http://127.0.0.1:8000/analyze \
 ```bash
 curl -X POST http://127.0.0.1:8000/alerts/preview \
   -H "Content-Type: application/json" \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY" \
   -d '{
     "query": "영상 편집용 노트북 200만원 이하로 비교해줘",
     "category": "laptop",
@@ -125,7 +138,8 @@ curl -X POST http://127.0.0.1:8000/alerts/preview \
 `/analyze` 응답의 `graph_trace_id`를 사용합니다.
 
 ```bash
-curl http://127.0.0.1:8000/traces/trace_xxxxxxxxxxxx
+curl http://127.0.0.1:8000/traces/trace_xxxxxxxxxxxx \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY"
 ```
 
 ### 리포트 저장
@@ -133,6 +147,7 @@ curl http://127.0.0.1:8000/traces/trace_xxxxxxxxxxxx
 ```bash
 curl -X POST http://127.0.0.1:8000/reports/save \
   -H "Content-Type: application/json" \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY" \
   -d '{
     "trace_id": "trace_xxxxxxxxxxxx",
     "title": "영상 편집용 PC 구매 리포트",
@@ -144,7 +159,8 @@ curl -X POST http://127.0.0.1:8000/reports/save \
 저장된 리포트 목록:
 
 ```bash
-curl http://127.0.0.1:8000/reports
+curl http://127.0.0.1:8000/reports \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY"
 ```
 
 ### 가격 알림 구독
@@ -152,6 +168,7 @@ curl http://127.0.0.1:8000/reports
 ```bash
 curl -X POST http://127.0.0.1:8000/alerts/subscribe \
   -H "Content-Type: application/json" \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY" \
   -d '{
     "trace_id": "trace_xxxxxxxxxxxx",
     "product_id": "build-001",
@@ -165,7 +182,8 @@ curl -X POST http://127.0.0.1:8000/alerts/subscribe \
 운영 지표:
 
 ```bash
-curl http://127.0.0.1:8000/ops/metrics
+curl http://127.0.0.1:8000/ops/metrics \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY"
 ```
 
 ### 소스 어댑터 상태와 수집
@@ -237,6 +255,7 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 ## 로컬 저장소
 
 분석 실행, 저장 리포트, 가격 알림 구독은 기본적으로 SQLite에 저장됩니다.
+저장 리포트와 알림은 `X-SpecPilot-Key`에서 계산된 워크스페이스 단위로 분리됩니다.
 
 기본 경로:
 
