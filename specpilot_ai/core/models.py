@@ -41,6 +41,12 @@ class ReviewStatus(StrEnum):
     rejected = "rejected"
 
 
+class TrustGrade(StrEnum):
+    high = "high"
+    medium = "medium"
+    review_required = "review_required"
+
+
 class WorkspaceContext(BaseModel):
     workspace_id: str
     owner_label: str
@@ -195,6 +201,28 @@ class ExcludedProduct(BaseModel):
     reason: str
 
 
+class SourceTrustAssessment(BaseModel):
+    source_type: str
+    source_name: str
+    kind: SourceKind
+    trust_grade: TrustGrade
+    confidence: float = Field(ge=0, le=1)
+    freshness_minutes: int
+    cache_ttl_minutes: int
+    evidence_count: int = Field(ge=0)
+    requires_human_review: bool = False
+    policy_notes: list[str] = Field(default_factory=list)
+
+
+class TrustPolicySummary(BaseModel):
+    cache_policy: str
+    stale_price_action: str
+    affiliate_disclosure: str
+    fairness_rules: list[str]
+    review_rules: list[str]
+    source_assessments: list[SourceTrustAssessment] = Field(default_factory=list)
+
+
 class PurchaseReport(BaseModel):
     summary: str
     top_recommendations: list[Recommendation]
@@ -209,6 +237,8 @@ class PurchaseReport(BaseModel):
     price_alerts: list[PriceAlertPlan] = Field(default_factory=list)
     source_health: list[str] = Field(default_factory=list)
     decision_matrix: list[str] = Field(default_factory=list)
+    source_trust: list[SourceTrustAssessment] = Field(default_factory=list)
+    trust_policy: TrustPolicySummary | None = None
     final_pick_id: str | None = None
 
 

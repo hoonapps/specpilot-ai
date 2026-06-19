@@ -39,6 +39,7 @@ from specpilot_ai.services.pricing import (
     purchase_stability,
 )
 from specpilot_ai.services.tracing import trace_event
+from specpilot_ai.services.trust import build_source_trust, build_trust_policy
 
 
 class PurchaseState(TypedDict, total=False):
@@ -400,6 +401,12 @@ def report_writer(state: PurchaseState) -> PurchaseState:
     ]
     ranked_ids = [card.product_id for card in ranked]
     price_alerts = build_price_alerts(state["price_snapshots"], state["criteria"], ranked_ids)
+    source_trust = build_source_trust(
+        state["price_snapshots"],
+        state["review_insights"],
+        state["benchmark_evidence"],
+    )
+    trust_policy = build_trust_policy(source_trust)
     state["report"] = PurchaseReport(
         summary=summary_chain.invoke(
             {
@@ -423,6 +430,8 @@ def report_writer(state: PurchaseState) -> PurchaseState:
         price_alerts=price_alerts,
         source_health=_source_health(state["price_snapshots"], state["citations"]),
         decision_matrix=_decision_matrix(recommendations, excluded),
+        source_trust=source_trust,
+        trust_policy=trust_policy,
         final_pick_id=recommendations[0].product.id if recommendations else None,
     )
     _trace(

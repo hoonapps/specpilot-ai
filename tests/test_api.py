@@ -46,6 +46,18 @@ def test_admin_page_exposes_review_console() -> None:
     assert "소스 수집" in response.text
 
 
+def test_trust_policy_endpoint_exposes_cache_and_fairness_rules() -> None:
+    response = client.get("/policy/trust")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["cache_policy"]
+    assert payload["affiliate_disclosure"]
+    assert payload["fairness_rules"]
+    assert payload["review_rules"]
+    assert payload["source_assessments"]
+
+
 def test_analyze_endpoint_returns_trace_and_alerts() -> None:
     response = client.post(
         "/analyze",
@@ -64,6 +76,8 @@ def test_analyze_endpoint_returns_trace_and_alerts() -> None:
     assert len(payload["report"]["top_recommendations"]) == 3
     assert len(payload["report"]["comparison_table"]) == 5
     assert payload["report"]["price_alerts"]
+    assert payload["report"]["source_trust"]
+    assert payload["report"]["trust_policy"]["fairness_rules"]
     assert payload["report"]["top_recommendations"][0]["price"]["effective_price_krw"] > 0
     assert payload["trace_events"]
 
