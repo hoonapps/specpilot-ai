@@ -810,6 +810,18 @@ class CategoryMarketReport(BaseModel):
     publishing_checklist: list[str] = Field(default_factory=list)
 
 
+class PublicCategoryMarketReport(BaseModel):
+    category: Category
+    slug: str
+    canonical_path: str
+    title: str
+    description: str
+    share_text: str
+    seo_keywords: list[str] = Field(default_factory=list)
+    cta_cards: list[str] = Field(default_factory=list)
+    report: CategoryMarketReport
+
+
 class GrowthEventRequest(BaseModel):
     event_type: GrowthEventType
     trace_id: str | None = None

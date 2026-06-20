@@ -72,6 +72,7 @@ from specpilot_ai.core.models import (
     PricingPlan,
     PrivacyPolicySummary,
     ProductBrief,
+    PublicCategoryMarketReport,
     PublicReport,
     PurchaseDecisionBoard,
     PurchaseLink,
@@ -1054,6 +1055,47 @@ def category_market_report(
         workspace_id=workspace.workspace_id,
         metrics=_store().metrics_for_workspace(workspace.workspace_id),
         category_filter=category,
+    )
+
+
+@app.get(
+    "/public/market/category-reports/{category}",
+    response_model=PublicCategoryMarketReport,
+)
+def public_category_market_report(category: Category) -> PublicCategoryMarketReport:
+    report = build_category_market_report(
+        workspace_id="public-market",
+        metrics=_store().metrics_for_workspace("demo"),
+        category_filter=category,
+    )
+    slug = "desktop-pc" if category == Category.desktop_pc else "laptop"
+    category_label = "데스크톱 PC" if category == Category.desktop_pc else "노트북"
+    title = f"{report.report_month} {category_label} 구매 리포트"
+    description = (
+        f"SpecPilot AI가 {category_label} 후보를 가격대, 추천 역할, "
+        "리스크, 구매 타이밍 기준으로 정리한 공개 월간 리포트입니다."
+    )
+    return PublicCategoryMarketReport(
+        category=category,
+        slug=slug,
+        canonical_path=f"/market/{slug}",
+        title=title,
+        description=description,
+        share_text=f"{title} - 추천 픽과 가격/리스크 체크포인트를 확인하세요.",
+        seo_keywords=[
+            category_label,
+            "컴퓨터 구매",
+            "노트북 구매",
+            "구매 리포트",
+            "가격 비교",
+            "SpecPilot AI",
+        ],
+        cta_cards=[
+            "내 예산과 용도에 맞춰 바로 분석하기",
+            "가격 알림으로 목표가 도달 시점 잡기",
+            "공개 리포트로 가족/동료와 검토하기",
+        ],
+        report=report,
     )
 
 

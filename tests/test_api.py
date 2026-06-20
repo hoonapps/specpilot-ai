@@ -236,6 +236,26 @@ def test_category_market_report_exposes_monthly_picks_and_risks() -> None:
     }
 
 
+def test_public_category_market_report_is_shareable_without_workspace_key() -> None:
+    response = client.get("/public/market/category-reports/desktop_pc")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["category"] == "desktop_pc"
+    assert payload["slug"] == "desktop-pc"
+    assert payload["canonical_path"] == "/market/desktop-pc"
+    assert "데스크톱 PC" in payload["title"]
+    assert payload["description"]
+    assert payload["share_text"]
+    assert "SpecPilot AI" in payload["seo_keywords"]
+    assert payload["cta_cards"]
+    assert payload["report"]["workspace_id"] == "public-market"
+    assert payload["report"]["category_filter"] == "desktop_pc"
+    assert payload["report"]["picks"]
+    assert payload["report"]["price_segments"]
+    assert payload["report"]["risk_signals"]
+
+
 def test_growth_funnel_tracks_product_reaction_events() -> None:
     workspace = {"X-SpecPilot-Key": f"pytest-growth-{uuid4().hex}"}
     other_workspace = {"X-SpecPilot-Key": f"pytest-growth-other-{uuid4().hex}"}
