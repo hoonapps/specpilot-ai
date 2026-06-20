@@ -1033,6 +1033,40 @@ class LaunchCampaignKit(BaseModel):
     measurement_plan: list[str] = Field(default_factory=list)
 
 
+class LaunchPulseMetric(BaseModel):
+    key: str
+    label: str
+    value: int | float | str
+    unit: str = ""
+    status: CheckStatus = CheckStatus.warning
+    detail: str
+
+
+class LaunchPulseSignal(BaseModel):
+    area: str
+    label: str
+    status: CheckStatus
+    score: float = Field(ge=0, le=100)
+    evidence: str
+    recommendation: str
+
+
+class LaunchPulseDashboard(BaseModel):
+    pulse_version: str = "specpilot.launch_pulse.v1"
+    workspace_id: str
+    generated_at: str
+    pulse_score: float = Field(ge=0, le=100)
+    status: CheckStatus
+    headline: str
+    summary: str
+    metrics: list[LaunchPulseMetric] = Field(default_factory=list)
+    signals: list[LaunchPulseSignal] = Field(default_factory=list)
+    hot_surfaces: list[str] = Field(default_factory=list)
+    top_actions: list[str] = Field(default_factory=list)
+    recent_feedback: list[FeedbackRecord] = Field(default_factory=list)
+    recent_growth_events: list[GrowthEventRecord] = Field(default_factory=list)
+
+
 class BetaCohortRequest(BaseModel):
     name: str = Field(min_length=2)
     scenario: str = Field(min_length=2)

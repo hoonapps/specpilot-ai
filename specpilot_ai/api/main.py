@@ -62,6 +62,7 @@ from specpilot_ai.core.models import (
     IntegrationReadinessDashboard,
     LaunchCampaignKit,
     LaunchGateDashboard,
+    LaunchPulseDashboard,
     ObservabilityDispatchRequest,
     ObservabilityDispatchResponse,
     ObservabilityExportRecord,
@@ -1231,6 +1232,14 @@ def growth_launch_kit(
     audience: str = "creator",
 ) -> LaunchCampaignKit:
     return build_launch_campaign_kit(category=category, audience=audience)
+
+
+@app.get("/growth/launch-pulse", response_model=LaunchPulseDashboard)
+def growth_launch_pulse(
+    limit: int = 12,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> LaunchPulseDashboard:
+    return _store().launch_pulse_for_workspace(workspace.workspace_id, limit=limit)
 
 
 @app.get("/beta/readiness", response_model=BetaReadinessDashboard)

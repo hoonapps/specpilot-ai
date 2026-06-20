@@ -63,6 +63,9 @@ from specpilot_ai.core.models import (
     IntegrationStatus,
     LaunchGateCheck,
     LaunchGateDashboard,
+    LaunchPulseDashboard,
+    LaunchPulseMetric,
+    LaunchPulseSignal,
     ObservabilityDispatchResponse,
     ObservabilityExportRecord,
     ObservabilityExportRequest,
@@ -2687,6 +2690,181 @@ class SpecPilotStore:
             ],
             next_actions=next_actions[:5],
             recent_events=recent_events,
+        )
+
+    def launch_pulse_for_workspace(
+        self,
+        workspace_id: str,
+        limit: int = 12,
+    ) -> LaunchPulseDashboard:
+        metrics = self.metrics_for_workspace(workspace_id)
+        growth = self.growth_funnel_for_workspace(workspace_id, limit=limit)
+        referrals = self.waitlist_referral_dashboard_for_workspace(workspace_id, limit=limit)
+        pricing = self.pricing_dashboard_for_workspace(workspace_id)
+        readiness = self.beta_readiness_for_workspace(workspace_id)
+        feedback = self.list_feedback_for_workspace(workspace_id, limit=limit)
+
+        activation_score = _pulse_score_from_rate(
+            growth.activation_rate,
+            warning=0.3,
+            ok=0.65,
+        )
+        love_score = min(
+            100.0,
+            metrics.average_satisfaction * 16
+            + metrics.purchase_intent_rate * 35
+            + min(metrics.feedback_count, 10) * 2,
+        )
+        sharing_score = min(
+            100.0,
+            metrics.share_cta_clicks * 12
+            + referrals.total_referrals * 10
+            + referrals.referred_signup_count * 18
+            + referrals.share_rate_hint * 35,
+        )
+        monetization_score = min(
+            100.0,
+            pricing.premium_intent_count * 16
+            + pricing.team_intent_count * 24
+            + min(pricing.estimated_mrr_krw / 10_000, 35),
+        )
+        reliability_score = min(
+            100.0,
+            readiness.launch_readiness_score * 0.65
+            + metrics.average_quality_score * 0.25
+            + metrics.conversion_ready_rate * 10,
+        )
+        pulse_score = round(
+            activation_score * 0.22
+            + love_score * 0.24
+            + sharing_score * 0.2
+            + monetization_score * 0.16
+            + reliability_score * 0.18,
+            1,
+        )
+        status = _pulse_status(pulse_score, readiness, growth)
+        signals = [
+            _pulse_signal(
+                area="activation",
+                label="첫 체험 반응",
+                score=activation_score,
+                evidence=(
+                    f"성장 이벤트 {growth.total_events}건, 추천 클릭률 "
+                    f"{round(growth.activation_rate * 100)}%"
+                ),
+                recommendation="공개 데모 preset과 추천 카드 CTA를 첫 화면에서 계속 실험하세요.",
+            ),
+            _pulse_signal(
+                area="love",
+                label="추천 만족도",
+                score=love_score,
+                evidence=(
+                    f"피드백 {metrics.feedback_count}건, 평균 만족도 "
+                    f"{metrics.average_satisfaction}점, 구매 의향 "
+                    f"{round(metrics.purchase_intent_rate * 100)}%"
+                ),
+                recommendation=(
+                    "낮은 평점 사유를 개선 백로그로 묶고 "
+                    "같은 후보군의 근거를 보강하세요."
+                ),
+            ),
+            _pulse_signal(
+                area="sharing",
+                label="공유 확산",
+                score=sharing_score,
+                evidence=(
+                    f"공유 CTA {metrics.share_cta_clicks}건, 추천 대기열 "
+                    f"{referrals.total_referrals}명, 추천 유입 {referrals.referred_signup_count}명"
+                ),
+                recommendation=(
+                    "공개 리포트 공유 문구와 추천 코드 CTA를 "
+                    "같은 화면에 붙여 확산 루프를 짧게 만드세요."
+                ),
+            ),
+            _pulse_signal(
+                area="monetization",
+                label="유료 수요",
+                score=monetization_score,
+                evidence=(
+                    f"요금제 관심 {pricing.intent_count}건, 유료 의향 "
+                    f"{pricing.premium_intent_count + pricing.team_intent_count}건, "
+                    f"예상 MRR {pricing.estimated_mrr_krw:,}원"
+                ),
+                recommendation=(
+                    "Team/Premium 의향이 생긴 persona를 "
+                    "별도 cohort로 만들어 가격 검증을 이어가세요."
+                ),
+            ),
+            _pulse_signal(
+                area="reliability",
+                label="출시 안정성",
+                score=reliability_score,
+                evidence=(
+                    f"readiness {readiness.launch_readiness_score}점, 품질 "
+                    f"{metrics.average_quality_score}점, 구매 준비율 "
+                    f"{round(metrics.conversion_ready_rate * 100)}%"
+                ),
+            recommendation=(
+                "readiness 경고와 품질 차단 사유는 "
+                "공개 확대 전에 launch gate에서 먼저 닫으세요."
+            ),
+            ),
+        ]
+        metrics_cards = [
+            _pulse_metric(
+                "pulse_score",
+                "Pulse",
+                pulse_score,
+                "점",
+                status,
+                "공개 반응, 확산, 유료 수요, 안정성을 합성한 출시 반응 점수",
+            ),
+            _pulse_metric(
+                "purchase_intent_rate",
+                "구매 의향",
+                round(metrics.purchase_intent_rate * 100),
+                "%",
+                _pulse_rate_status(metrics.purchase_intent_rate, 0.25, 0.5),
+                "피드백 중 실제 구매 의향 비율",
+            ),
+            _pulse_metric(
+                "share_rate",
+                "공유 CTA",
+                round(growth.share_rate * 100),
+                "%",
+                _pulse_rate_status(growth.share_rate, 0.15, 0.35),
+                "분석 실행 대비 공유 CTA 반응",
+            ),
+            _pulse_metric(
+                "estimated_mrr",
+                "예상 MRR",
+                pricing.estimated_mrr_krw,
+                "원",
+                _pulse_count_status(pricing.premium_intent_count + pricing.team_intent_count, 1, 3),
+                "요금제 관심 등록에서 계산한 월 반복 매출 신호",
+            ),
+            _pulse_metric(
+                "referrals",
+                "추천 대기열",
+                referrals.total_referrals,
+                "명",
+                _pulse_count_status(referrals.total_referrals, 1, 5),
+                "초대 링크 기반 공개 전 대기 수요",
+            ),
+        ]
+        return LaunchPulseDashboard(
+            workspace_id=workspace_id,
+            generated_at=_now(),
+            pulse_score=pulse_score,
+            status=status,
+            headline=_pulse_headline(status, pulse_score),
+            summary=_pulse_summary(pulse_score, metrics, referrals, pricing),
+            metrics=metrics_cards,
+            signals=signals,
+            hot_surfaces=growth.top_surfaces,
+            top_actions=_pulse_top_actions(signals, growth, referrals, pricing, readiness),
+            recent_feedback=feedback,
+            recent_growth_events=growth.recent_events,
         )
 
     def create_beta_lead_for_workspace(
@@ -8578,6 +8756,138 @@ def _growth_funnel_summary(
     return (
         "분석 실행 또는 추천 카드 클릭 표본이 부족해 공개 반응을 판단하기 어렵습니다."
     )
+
+
+def _pulse_score_from_rate(value: float, *, warning: float, ok: float) -> float:
+    if value <= 0:
+        return 0
+    if value >= ok:
+        return 100
+    if value <= warning:
+        return round((value / warning) * 55, 1)
+    return round(55 + ((value - warning) / (ok - warning)) * 45, 1)
+
+
+def _pulse_rate_status(value: float, warning: float, ok: float) -> CheckStatus:
+    if value >= ok:
+        return CheckStatus.ok
+    if value >= warning:
+        return CheckStatus.warning
+    return CheckStatus.blocker
+
+
+def _pulse_count_status(value: int, warning: int, ok: int) -> CheckStatus:
+    if value >= ok:
+        return CheckStatus.ok
+    if value >= warning:
+        return CheckStatus.warning
+    return CheckStatus.blocker
+
+
+def _pulse_status(
+    pulse_score: float,
+    readiness: BetaReadinessDashboard,
+    growth: GrowthFunnelDashboard,
+) -> CheckStatus:
+    if (
+        pulse_score < 35
+        or readiness.launch_readiness_score < 35
+        or growth.status == CheckStatus.blocker
+    ):
+        return CheckStatus.blocker
+    if pulse_score < 70 or readiness.launch_readiness_score < 70:
+        return CheckStatus.warning
+    return CheckStatus.ok
+
+
+def _pulse_signal(
+    *,
+    area: str,
+    label: str,
+    score: float,
+    evidence: str,
+    recommendation: str,
+) -> LaunchPulseSignal:
+    if score >= 70:
+        status = CheckStatus.ok
+    elif score >= 35:
+        status = CheckStatus.warning
+    else:
+        status = CheckStatus.blocker
+    return LaunchPulseSignal(
+        area=area,
+        label=label,
+        status=status,
+        score=round(score, 1),
+        evidence=evidence,
+        recommendation=recommendation,
+    )
+
+
+def _pulse_metric(
+    key: str,
+    label: str,
+    value: int | float | str,
+    unit: str,
+    status: CheckStatus,
+    detail: str,
+) -> LaunchPulseMetric:
+    return LaunchPulseMetric(
+        key=key,
+        label=label,
+        value=value,
+        unit=unit,
+        status=status,
+        detail=detail,
+    )
+
+
+def _pulse_headline(status: CheckStatus, pulse_score: float) -> str:
+    if status == CheckStatus.ok:
+        return f"공개 반응 Pulse {pulse_score}점, 확대 실험을 진행할 수 있습니다."
+    if status == CheckStatus.warning:
+        return f"공개 반응 Pulse {pulse_score}점, 강한 신호는 있지만 보강이 필요합니다."
+    return f"공개 반응 Pulse {pulse_score}점, 표본과 핵심 전환을 먼저 확보해야 합니다."
+
+
+def _pulse_summary(
+    pulse_score: float,
+    metrics: OperationsMetrics,
+    referrals: WaitlistReferralDashboard,
+    pricing: PricingDashboard,
+) -> str:
+    return (
+        f"분석 {metrics.analysis_runs}건, 피드백 {metrics.feedback_count}건, "
+        f"추천 대기열 {referrals.total_referrals}명, 요금제 관심 {pricing.intent_count}건을 "
+        f"종합한 출시 반응 점수는 {pulse_score}점입니다."
+    )
+
+
+def _pulse_top_actions(
+    signals: list[LaunchPulseSignal],
+    growth: GrowthFunnelDashboard,
+    referrals: WaitlistReferralDashboard,
+    pricing: PricingDashboard,
+    readiness: BetaReadinessDashboard,
+) -> list[str]:
+    actions = [
+        signal.recommendation
+        for signal in sorted(signals, key=lambda item: item.score)
+        if signal.status != CheckStatus.ok
+    ][:3]
+    actions.extend(growth.next_actions[:1])
+    actions.extend(referrals.next_actions[:1])
+    actions.extend(pricing.next_actions[:1])
+    actions.extend(readiness.next_actions[:1])
+    deduped: list[str] = []
+    for action in actions:
+        if action and action not in deduped:
+            deduped.append(action)
+    if not deduped:
+        deduped.append(
+            "Pulse 신호가 안정적입니다. 상위 유입 채널에 공개 베타 트래픽을 더 배정하세요."
+        )
+    return deduped[:6]
 
 
 def _retry_at(now: str, minutes: int) -> str:

@@ -503,6 +503,131 @@ def test_growth_launch_kit_exposes_campaign_copy_and_measurement_plan() -> None:
     assert "추천 만족도와 구매 의향률" in payload["measurement_plan"]
 
 
+def test_growth_launch_pulse_summarizes_public_reaction_signals() -> None:
+    workspace = {"X-SpecPilot-Key": f"pytest-pulse-{uuid4().hex}"}
+
+    analysis = client.post(
+        "/analyze",
+        headers=workspace,
+        json={
+            "query": "크리에이터 노트북 200만원 이하로 추천해줘",
+            "category": "laptop",
+            "budget_krw": 2_000_000,
+            "purpose": "Premiere Pro, 외부 촬영 데이터 백업",
+            "must_haves": ["32GB RAM", "외장 GPU", "가벼운 무게"],
+        },
+    )
+    assert analysis.status_code == 200
+    analysis_payload = analysis.json()
+    trace_id = analysis_payload["graph_trace_id"]
+    product_id = analysis_payload["report"]["top_recommendations"][0]["product"]["id"]
+
+    for event_type in [
+        "analysis_view",
+        "recommendation_click",
+        "share_cta",
+        "subscription_cta",
+    ]:
+        event = client.post(
+            "/growth/events",
+            headers=workspace,
+            json={
+                "event_type": event_type,
+                "trace_id": trace_id,
+                "product_id": product_id,
+                "source": "pytest",
+                "surface": "demo-gallery",
+                "label": f"{event_type} pulse seed",
+            },
+        )
+        assert event.status_code == 200
+
+    feedback = client.post(
+        "/feedback",
+        headers=workspace,
+        json={
+            "trace_id": trace_id,
+            "rating": 5,
+            "purchase_intent": True,
+            "selected_product_id": product_id,
+            "reason": "데모 preset으로 바로 조건을 넣고 결과를 이해했습니다.",
+            "improvement_requests": ["실제 쇼핑몰 링크 확대"],
+            "contact": "pulse@example.com",
+        },
+    )
+    assert feedback.status_code == 200
+
+    referral = client.post(
+        "/growth/waitlist-referrals",
+        headers=workspace,
+        json={
+            "email": "pulse@example.com",
+            "persona": "creator",
+            "use_case": "친구와 구매 리포트를 공유하고 싶습니다.",
+            "source": "pytest-pulse",
+        },
+    )
+    assert referral.status_code == 200
+
+    subscription = client.post(
+        "/billing/subscription-intents",
+        headers=workspace,
+        json={
+            "email": "pulse@example.com",
+            "plan_id": "premium",
+            "billing_cycle": "monthly",
+            "persona": "creator",
+            "use_case": "가격 알림과 결제 전 검수",
+            "team_size": 1,
+            "max_budget_krw": 20_000,
+            "feature_priorities": ["가격 알림", "공유 리포트"],
+            "purchase_timing": "within_30_days",
+            "source": "pytest-pulse",
+        },
+    )
+    assert subscription.status_code == 200
+
+    lead = client.post(
+        "/beta/leads",
+        headers=workspace,
+        json={
+            "email": "pulse@example.com",
+            "persona": "creator",
+            "use_case": "노트북 구매 전 검수",
+            "company_size": "freelancer",
+            "contact_consent": True,
+            "source": "pytest-pulse",
+        },
+    )
+    assert lead.status_code == 200
+
+    pulse = client.get("/growth/launch-pulse?limit=8", headers=workspace)
+    assert pulse.status_code == 200
+    payload = pulse.json()
+    assert payload["pulse_version"] == "specpilot.launch_pulse.v1"
+    assert payload["workspace_id"].startswith("workspace_")
+    assert payload["pulse_score"] > 0
+    assert payload["status"] in {"ok", "warning", "blocker"}
+    assert "Pulse" in payload["headline"]
+    assert {signal["area"] for signal in payload["signals"]} >= {
+        "activation",
+        "love",
+        "sharing",
+        "monetization",
+        "reliability",
+    }
+    assert {metric["key"] for metric in payload["metrics"]} >= {
+        "pulse_score",
+        "purchase_intent_rate",
+        "estimated_mrr",
+        "referrals",
+    }
+    assert any("demo-gallery" in item for item in payload["hot_surfaces"])
+    assert payload["top_actions"]
+    assert payload["recent_feedback"][0]["feedback_id"] == feedback.json()["feedback_id"]
+    assert payload["recent_growth_events"]
+
+
 def test_privacy_policy_endpoint_exposes_retention_and_controls() -> None:
     response = client.get("/policy/privacy")
 
