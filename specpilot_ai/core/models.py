@@ -2117,6 +2117,60 @@ class PublicWarrantyReturnKit(BaseModel):
     next_actions: list[str] = Field(default_factory=list)
 
 
+class PriceBreakdownRequest(BaseModel):
+    category: Category = Category.desktop_pc
+    product_title: str = "구매 후보"
+    seller_name: str = "판매자"
+    listed_price_krw: int = Field(default=2_000_000, ge=0, le=50_000_000)
+    quantity: int = Field(default=1, ge=1, le=200)
+    shipping_fee_krw: int = Field(default=0, ge=0, le=5_000_000)
+    assembly_fee_krw: int = Field(default=0, ge=0, le=5_000_000)
+    os_fee_krw: int = Field(default=0, ge=0, le=5_000_000)
+    coupon_discount_krw: int = Field(default=0, ge=0, le=20_000_000)
+    card_discount_krw: int = Field(default=0, ge=0, le=20_000_000)
+    point_rebate_krw: int = Field(default=0, ge=0, le=20_000_000)
+    budget_krw: int | None = Field(default=None, ge=0, le=200_000_000)
+    expected_report_price_krw: int | None = Field(default=None, ge=0, le=200_000_000)
+    discount_expires_hours: int | None = Field(default=None, ge=0, le=8760)
+    stock_count: int | None = Field(default=None, ge=0, le=100_000)
+    risk_terms: list[str] = Field(default_factory=list)
+    source: str = "web"
+
+
+class PriceBreakdownLine(BaseModel):
+    line_id: str
+    label: str
+    amount_krw: int
+    kind: str
+    explanation: str
+
+
+class PublicPriceBreakdownKit(BaseModel):
+    kit_version: str = "specpilot.public_price_breakdown_kit.v1"
+    generated_at: str
+    category: Category
+    product_title: str
+    seller_name: str
+    priority: CheckStatus
+    price_score: int = Field(ge=0, le=100)
+    subtotal_krw: int
+    effective_price_krw: int
+    per_unit_price_krw: int
+    budget_delta_krw: int | None = None
+    report_price_delta_krw: int | None = None
+    headline: str
+    summary: str
+    price_lines: list[PriceBreakdownLine] = Field(default_factory=list)
+    risk_flags: list[str] = Field(default_factory=list)
+    seller_questions: list[str] = Field(default_factory=list)
+    evidence_checklist: list[str] = Field(default_factory=list)
+    analysis_prefill: str
+    share_copy: str
+    primary_cta_label: str = "실구매가 기준으로 분석 시작"
+    primary_cta_path: str = "#analysis"
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class CheckoutNudgeRequest(BaseModel):
     category: Category = Category.desktop_pc
     product_title: str = "구매 후보"

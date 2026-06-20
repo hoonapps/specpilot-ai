@@ -93,6 +93,7 @@ from specpilot_ai.core.models import (
     OpsRegressionDashboard,
     OwnershipCostRequest,
     PriceAlertPlan,
+    PriceBreakdownRequest,
     PricingDashboard,
     PricingPlan,
     PrivacyPolicySummary,
@@ -119,6 +120,7 @@ from specpilot_ai.core.models import (
     PublicListingDecoderKit,
     PublicMistakeCostCalculator,
     PublicOwnershipCostKit,
+    PublicPriceBreakdownKit,
     PublicPriceWatchKit,
     PublicProofHub,
     PublicPurchaseAftercareKit,
@@ -222,6 +224,7 @@ from specpilot_ai.services.mistake_cost import (
 )
 from specpilot_ai.services.onboarding import purchase_onboarding_playbooks
 from specpilot_ai.services.ownership_cost import build_public_ownership_cost_kit
+from specpilot_ai.services.price_breakdown import build_public_price_breakdown_kit
 from specpilot_ai.services.price_watch import build_public_price_watch_kit
 from specpilot_ai.services.purchase_aftercare import build_public_purchase_aftercare_kit
 from specpilot_ai.services.purchase_approval import build_public_purchase_approval_brief_kit
@@ -1343,6 +1346,16 @@ def public_warranty_return_kit(
     request: WarrantyReturnRequest,
 ) -> PublicWarrantyReturnKit:
     return build_public_warranty_return_kit(request)
+
+
+@app.post(
+    "/public/price-breakdown-kit",
+    response_model=PublicPriceBreakdownKit,
+)
+def public_price_breakdown_kit(
+    request: PriceBreakdownRequest,
+) -> PublicPriceBreakdownKit:
+    return build_public_price_breakdown_kit(request)
 
 
 @app.post(

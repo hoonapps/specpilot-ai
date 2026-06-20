@@ -220,6 +220,23 @@ CHECKS = (
             "share_copy",
         ),
     ),
+    SmokeCheck(
+        name="public-price-breakdown-kit",
+        method="POST",
+        path="/public/price-breakdown-kit",
+        required_keys=(
+            "kit_version",
+            "priority",
+            "price_score",
+            "subtotal_krw",
+            "effective_price_krw",
+            "budget_delta_krw",
+            "report_price_delta_krw",
+            "price_lines",
+            "risk_flags",
+            "share_copy",
+        ),
+    ),
 )
 
 
@@ -737,6 +754,26 @@ def run_smoke() -> list[dict[str, Any]]:
                 "restocking_fee_percent": 0,
                 "policy_text": "국내 제조사 AS, 초기 불량 교환 가능",
                 "risk_terms": [],
+                "source": "release_smoke",
+            }
+        if check.name == "public-price-breakdown-kit":
+            json_body = {
+                "category": "desktop_pc",
+                "product_title": "Creator RTX 4070 SUPER Build",
+                "seller_name": "PC Mall",
+                "listed_price_krw": 2_185_000,
+                "quantity": 1,
+                "shipping_fee_krw": 10_000,
+                "assembly_fee_krw": 30_000,
+                "os_fee_krw": 0,
+                "coupon_discount_krw": 40_000,
+                "card_discount_krw": 20_000,
+                "point_rebate_krw": 0,
+                "budget_krw": 2_200_000,
+                "expected_report_price_krw": 2_185_000,
+                "discount_expires_hours": 72,
+                "stock_count": 8,
+                "risk_terms": ["카드 할인"],
                 "source": "release_smoke",
             }
         response = client.request(check.method, check.path, headers=headers, json=json_body)

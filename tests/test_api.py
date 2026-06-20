@@ -1306,6 +1306,82 @@ def test_public_warranty_return_kit_checks_policy_before_checkout() -> None:
     assert any("결제를 보류" in action for action in risky_payload["next_actions"])
 
 
+def test_public_price_breakdown_kit_calculates_final_checkout_price() -> None:
+    response = client.post(
+        "/public/price-breakdown-kit",
+        json={
+            "category": "desktop_pc",
+            "product_title": "Creator RTX 4070 SUPER Build",
+            "seller_name": "PC Mall",
+            "listed_price_krw": 2_185_000,
+            "quantity": 1,
+            "shipping_fee_krw": 10_000,
+            "assembly_fee_krw": 30_000,
+            "os_fee_krw": 0,
+            "coupon_discount_krw": 40_000,
+            "card_discount_krw": 20_000,
+            "point_rebate_krw": 0,
+            "budget_krw": 2_200_000,
+            "expected_report_price_krw": 2_185_000,
+            "discount_expires_hours": 72,
+            "stock_count": 8,
+            "risk_terms": ["카드 할인"],
+            "source": "pytest",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["kit_version"] == "specpilot.public_price_breakdown_kit.v1"
+    assert payload["priority"] == "ok"
+    assert payload["subtotal_krw"] == 2_185_000
+    assert payload["effective_price_krw"] == 2_165_000
+    assert payload["per_unit_price_krw"] == 2_165_000
+    assert payload["budget_delta_krw"] == -35_000
+    assert payload["report_price_delta_krw"] == -20_000
+    assert {line["line_id"] for line in payload["price_lines"]} == {
+        "listed_subtotal",
+        "shipping_fee",
+        "assembly_os_fee",
+        "coupon_card_discount",
+        "point_rebate",
+        "effective_price",
+    }
+    assert "SpecPilot AI 실구매가 분해" in payload["share_copy"]
+    assert "최종 실구매가" in payload["analysis_prefill"]
+    assert payload["primary_cta_path"] == "#analysis"
+
+    risky = client.post(
+        "/public/price-breakdown-kit",
+        json={
+            "category": "laptop",
+            "product_title": "Flash Sale Laptop",
+            "seller_name": "Open Market",
+            "listed_price_krw": 1_690_000,
+            "quantity": 1,
+            "shipping_fee_krw": 80_000,
+            "assembly_fee_krw": 0,
+            "os_fee_krw": 190_000,
+            "coupon_discount_krw": 0,
+            "card_discount_krw": 0,
+            "point_rebate_krw": 0,
+            "budget_krw": 1_700_000,
+            "expected_report_price_krw": 1_650_000,
+            "discount_expires_hours": 3,
+            "stock_count": 2,
+            "risk_terms": ["타임딜", "앱전용", "조건부 청구 할인"],
+        },
+    )
+    assert risky.status_code == 200
+    risky_payload = risky.json()
+    assert risky_payload["priority"] == "blocker"
+    assert risky_payload["effective_price_krw"] == 1_960_000
+    assert risky_payload["budget_delta_krw"] == 260_000
+    assert risky_payload["report_price_delta_krw"] == 310_000
+    assert risky_payload["price_score"] < 60
+    assert any("결제를 보류" in action for action in risky_payload["next_actions"])
+
+
 def test_public_checkout_nudge_kit_turns_cart_check_into_followup_plan() -> None:
     hold = client.post(
         "/public/checkout-nudge-kit",
