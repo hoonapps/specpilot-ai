@@ -88,6 +88,7 @@ from specpilot_ai.core.models import (
     ReportAdvisorAnswer,
     ReportAdvisorQuestionRequest,
     ReportShare,
+    ReportShareAssets,
     ReviewDecision,
     ReviewDecisionRequest,
     ReviewQueueItem,
@@ -780,6 +781,20 @@ def share_report(
     if share is None:
         raise HTTPException(status_code=404, detail="공유할 리포트를 찾을 수 없습니다.")
     return share
+
+
+@app.get("/reports/{report_id}/share-assets", response_model=ReportShareAssets)
+def report_share_assets(
+    report_id: str,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> ReportShareAssets:
+    assets = _store().share_assets_for_workspace(workspace.workspace_id, report_id)
+    if assets is None:
+        raise HTTPException(
+            status_code=404,
+            detail="공유 자산을 만들 저장 리포트를 찾을 수 없습니다.",
+        )
+    return assets
 
 
 @app.delete("/reports/{report_id}/share", response_model=ReportShare)

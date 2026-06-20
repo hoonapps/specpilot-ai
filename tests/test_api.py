@@ -1239,6 +1239,32 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
     assert share_payload["share_token"].startswith("share_")
     assert share_payload["public_path"].startswith("/r/share_")
 
+    share_assets = client.get(
+        f"/reports/{saved_payload['report_id']}/share-assets",
+        headers=WORKSPACE_A,
+    )
+    assert share_assets.status_code == 200
+    share_assets_payload = share_assets.json()
+    assert share_assets_payload["asset_version"] == "specpilot.share_assets.v1"
+    assert share_assets_payload["share_token"] == share_payload["share_token"]
+    assert share_assets_payload["public_path"] == share_payload["public_path"]
+    assert top_recommendation["product"]["model_name"] in share_assets_payload["headline"]
+    assert share_assets_payload["og_title"]
+    assert share_assets_payload["og_description"]
+    assert len(share_assets_payload["visual_card_text"]) >= 4
+    assert "#SpecPilotAI" in share_assets_payload["hashtags"]
+    assert share_assets_payload["reviewer_questions"]
+    assert {item["channel"] for item in share_assets_payload["variants"]} == {
+        "blog",
+        "community",
+        "kakao",
+    }
+    assert all(
+        share_payload["public_path"] in item["copy_text"]
+        for item in share_assets_payload["variants"]
+    )
+    assert share_assets_payload["next_actions"]
+
     blocked_share = client.post(
         f"/reports/{saved_payload['report_id']}/share",
         headers=WORKSPACE_B,

@@ -34,6 +34,7 @@ SpecPilot AI는 최저가 링크만 보여주는 쇼핑 도구가 아닙니다. 
 - TOP 3 추천과 제외 후보 2개
 - 비교표, 가격 알림 목표가, 구매 전 체크리스트
 - 공유용 검토 브리프: 핵심 판정, 근거, 리스크, 검토 질문, 복사용 문구
+- 공유 자산 생성: 공개 리포트 URL 기준 카카오톡, 커뮤니티, 블로그/노션용 복사 문구와 OG 카드 메타 생성
 - 후보별 근거 팩: 가격 계산, 리뷰 근거 수, 벤치마크, 호환성, 출처 신뢰 요약
 - 옵션/사양 검수표: 판매 페이지 옵션명과 핵심 사양 대조
 - 구매 판정: 구매 진행 가능, 가격 대기, 검수 후 구매
@@ -293,6 +294,13 @@ curl http://127.0.0.1:8000/public/reports/share_xxxxxxxxxxxxxxxxxxxx
 
 ```text
 http://127.0.0.1:8000/r/share_xxxxxxxxxxxxxxxxxxxx
+```
+
+공유 자산 생성:
+
+```bash
+curl http://127.0.0.1:8000/reports/report_xxxxxxxxxxxx/share-assets \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY"
 ```
 
 공유 해제:
@@ -1096,6 +1104,7 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 - `/policy/trust-center`: 추천 공정성, 출처 검수, 개인정보 최소화, 사람 검수 게이트, 구매자 권리, 위험 고지, 다음 액션을 공개 신뢰 대시보드로 반환
 - `/ops/data-governance`: 워크스페이스별 테이블 인벤토리, 원문 연락처 표면, 마스킹 표면, 보존 초과 액션을 집계
 - `share_token`, `shared_at`, `share_views`: 저장 리포트 공개 공유 상태
+- `/reports/{report_id}/share-assets`: 공개 리포트 URL, 구매 판정, 최종 후보, 검토 질문을 조합해 카카오톡/커뮤니티/블로그 공유 문구와 OG 메타를 생성
 - `/reports/{report_id}/purchase-links`, `/reports/{report_id}/purchase-link-governance`, `/buy/{link_id}`: 후보별 제휴/비제휴 구매 링크, 제휴 고지, 비제휴 대안 정책 경고, 공개 클릭 redirect와 클릭 지표
 - `/public/market/category-reports/{category}`: 데스크톱 PC/노트북 월간 카테고리 리포트를 SEO 제목, canonical path, 공유 문구, CTA 카드와 함께 공개 조회
 - `/public/onboarding/playbooks`: 데스크톱 PC, 휴대형 노트북, 팀 구매자용 시작 질문, 예산 힌트, 필수 입력 슬롯, 신뢰 검수 게이트, 분석 CTA를 공개 조회
@@ -1183,7 +1192,7 @@ make docker-build
 - `/intake/diagnose`가 누락 조건, 추가 질문, 정규화 요청을 반환하는지
 - `/analyze`, `/alerts/preview`, `/traces/{trace_id}`가 동작하는지
 - `/reports/save`, `/reports/{report_id}`, `/alerts/subscribe`, `/ops/metrics`가 동작하는지
-- `/reports/{report_id}/share`, `/public/reports/{share_token}`, `/r/{share_token}`이 공개 공유 리포트를 만들고 해제하는지
+- `/reports/{report_id}/share`, `/reports/{report_id}/share-assets`, `/public/reports/{share_token}`, `/r/{share_token}`이 공개 공유 리포트와 채널별 공유 문구를 만들고 해제하는지
 - `/reports/{report_id}/advisor-questions`, `/advisor-questions`가 저장 리포트 기반 구매 상담 답변, 근거, 다음 행동, 워크스페이스 격리를 처리하는지
 - `/reports/{report_id}/checkout-review`, `/reports/{report_id}/checkout-reviews`, `/checkout-reviews`가 결제 전 검수와 워크스페이스 격리를 처리하는지
 - `/reports/{report_id}/purchase-links`, `/reports/{report_id}/purchase-link-governance`, `/buy/{link_id}`가 제휴/비제휴 구매 링크, 정책 경고, 공개 클릭 redirect, 클릭 지표를 처리하는지

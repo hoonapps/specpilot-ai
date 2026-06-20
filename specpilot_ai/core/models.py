@@ -1573,6 +1573,33 @@ class ReportShare(BaseModel):
     share_views: int = 0
 
 
+class ReportShareAssetVariant(BaseModel):
+    channel: str
+    label: str
+    headline: str
+    body: str
+    cta: str
+    copy_text: str
+
+
+class ReportShareAssets(BaseModel):
+    asset_version: str = "specpilot.share_assets.v1"
+    workspace_id: str = "demo"
+    report_id: str
+    share_token: str | None = None
+    public_path: str | None = None
+    generated_at: str
+    headline: str
+    subheadline: str
+    og_title: str
+    og_description: str
+    visual_card_text: list[str] = Field(default_factory=list)
+    hashtags: list[str] = Field(default_factory=list)
+    reviewer_questions: list[str] = Field(default_factory=list)
+    variants: list[ReportShareAssetVariant] = Field(default_factory=list)
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class PublicReport(BaseModel):
     report_id: str
     title: str

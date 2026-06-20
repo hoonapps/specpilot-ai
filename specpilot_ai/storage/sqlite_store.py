@@ -93,6 +93,8 @@ from specpilot_ai.core.models import (
     ReportAdvisorAnswer,
     ReportAdvisorQuestionRequest,
     ReportShare,
+    ReportShareAssets,
+    ReportShareAssetVariant,
     ReviewDecision,
     ReviewQueueItem,
     ReviewStatus,
@@ -1617,6 +1619,16 @@ class SpecPilotStore:
             shared_at=None,
             share_views=row["share_views"],
         )
+
+    def share_assets_for_workspace(
+        self,
+        workspace_id: str,
+        report_id: str,
+    ) -> ReportShareAssets | None:
+        report = self.get_report_for_workspace(workspace_id, report_id)
+        if report is None:
+            return None
+        return _build_report_share_assets(report)
 
     def get_public_report(self, share_token: str) -> PublicReport | None:
         now = _now()
@@ -8715,6 +8727,147 @@ def _growth_funnel_step(
         status=status,
         recommendation=recommendation,
     )
+
+
+def _build_report_share_assets(report: SavedReportDetail) -> ReportShareAssets:
+    purchase = report.response.report
+    criteria = report.response.criteria
+    top = purchase.top_recommendations[0] if purchase.top_recommendations else None
+    decision = purchase.purchase_decision
+    brief = purchase.share_brief
+    top_model = report.top_model_name or (top.product.model_name if top else "추천 후보")
+    price = top.price.effective_price_krw if top else None
+    public_path = f"/r/{report.share_token}" if report.share_token else None
+    public_label = public_path or "공개 공유 링크 생성 후 자동 입력"
+    verdict = decision.label if decision else "구매 검토 필요"
+    confidence = round(decision.confidence) if decision else 0
+    reasons = brief.key_reasons if brief else []
+    watchouts = brief.watchouts if brief else []
+    reviewer_questions = brief.reviewer_questions if brief else []
+    primary_reason = reasons[0] if reasons else (top.fit_summary if top else purchase.summary)
+    primary_watchout = (
+        watchouts[0]
+        if watchouts
+        else "결제 전 옵션명, 배송비, 카드 혜택을 다시 확인하세요."
+    )
+    category_label = "노트북" if criteria.category == Category.laptop else "데스크톱 PC"
+    budget_label = f"{criteria.budget_krw:,}원" if criteria.budget_krw else "예산 미정"
+    price_label = f"{price:,}원" if price is not None else "가격 확인 필요"
+    headline = f"{category_label} 구매 후보는 {top_model}입니다"
+    subheadline = (
+        f"{verdict} · 확신도 {confidence}점 · 실구매가 {price_label}. "
+        f"{primary_reason}"
+    )
+    og_title = f"{top_model} 구매 검토 리포트"
+    og_description = _clamp_text(
+        f"{verdict}: {primary_reason} 결제 전 확인: {primary_watchout}",
+        155,
+    )
+    visual_card_text = [
+        "SpecPilot AI 구매 검토",
+        f"추천: {top_model}",
+        f"판정: {verdict}",
+        f"실구매가: {price_label}",
+    ]
+    hashtags = _dedupe_strings(
+        [
+            "#SpecPilotAI",
+            "#컴퓨터구매",
+            "#노트북구매" if criteria.category == Category.laptop else "#PC견적",
+            "#구매검토",
+            "#가격비교",
+        ]
+    )
+    variants = [
+        _share_asset_variant(
+            channel="kakao",
+            label="카카오톡 공유",
+            headline=headline,
+            body=(
+                f"{top_model}으로 {category_label} 구매 검토 리포트를 만들었어요. "
+                f"{verdict}, 실구매가 {price_label} 기준이고 "
+                "결제 전 체크포인트도 같이 정리했습니다."
+            ),
+            cta="공개 리포트 보기",
+            public_label=public_label,
+        ),
+        _share_asset_variant(
+            channel="community",
+            label="커뮤니티 검토 요청",
+            headline=f"{category_label} 구매 전 검토 부탁드립니다",
+            body=(
+                f"예산 {budget_label}, 용도는 {criteria.purpose}입니다. "
+                f"SpecPilot AI가 {top_model}을 1순위로 추천했고 판정은 {verdict}입니다. "
+                f"핵심 근거는 {primary_reason}이고, 우려 지점은 {primary_watchout}입니다."
+            ),
+            cta="다른 분들 의견도 받고 싶습니다",
+            public_label=public_label,
+        ),
+        _share_asset_variant(
+            channel="blog",
+            label="블로그/노션 요약",
+            headline=og_title,
+            body=(
+                f"{criteria.purpose} 용도로 {category_label} 후보를 비교했습니다. "
+                f"최종 후보는 {top_model}, 실구매가는 {price_label}, 구매 판정은 {verdict}입니다. "
+                "리포트에는 TOP 3 비교, 대안 시나리오, 구매 타이밍, "
+                "결제 전 체크리스트가 포함됩니다."
+            ),
+            cta="상세 비교 리포트",
+            public_label=public_label,
+        ),
+    ]
+    next_actions = [
+        "공개 리포트 URL을 카카오톡 또는 커뮤니티 검토 요청 문구와 함께 공유하세요.",
+        "댓글에서 반복되는 우려를 구매 상담 Q&A 또는 결제 전 검수에 반영하세요.",
+        "공유 후 성장 퍼널의 share_cta와 recommendation_click 전환을 확인하세요.",
+    ]
+    if not report.share_token:
+        next_actions.insert(0, "먼저 /reports/{report_id}/share 로 공개 링크를 생성하세요.")
+    return ReportShareAssets(
+        workspace_id=report.workspace_id,
+        report_id=report.report_id,
+        share_token=report.share_token,
+        public_path=public_path,
+        generated_at=_now(),
+        headline=headline,
+        subheadline=_clamp_text(subheadline, 220),
+        og_title=_clamp_text(og_title, 70),
+        og_description=og_description,
+        visual_card_text=visual_card_text,
+        hashtags=hashtags,
+        reviewer_questions=reviewer_questions[:5],
+        variants=variants,
+        next_actions=next_actions,
+    )
+
+
+def _share_asset_variant(
+    *,
+    channel: str,
+    label: str,
+    headline: str,
+    body: str,
+    cta: str,
+    public_label: str,
+) -> ReportShareAssetVariant:
+    body = _clamp_text(body, 420)
+    copy_text = f"{headline}\n\n{body}\n\n{cta}: {public_label}"
+    return ReportShareAssetVariant(
+        channel=channel,
+        label=label,
+        headline=_clamp_text(headline, 80),
+        body=body,
+        cta=cta,
+        copy_text=copy_text,
+    )
+
+
+def _clamp_text(value: str, limit: int) -> str:
+    normalized = " ".join(value.split())
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: max(0, limit - 1)].rstrip() + "…"
 
 
 def _event_rate(
