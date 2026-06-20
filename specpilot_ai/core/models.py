@@ -1127,6 +1127,45 @@ class PublicAcquisitionHub(BaseModel):
     recent_growth_events: list[GrowthEventRecord] = Field(default_factory=list)
 
 
+class RetentionSignal(BaseModel):
+    key: str
+    label: str
+    status: CheckStatus
+    score: float = Field(ge=0, le=100)
+    metric: str
+    insight: str
+    next_action: str
+
+
+class RetentionPlay(BaseModel):
+    play_id: str
+    label: str
+    audience: str
+    trigger: str
+    channel: str
+    cta_label: str
+    cta_target: str
+    expected_impact: str
+    evidence: list[str] = Field(default_factory=list)
+
+
+class RetentionHubDashboard(BaseModel):
+    hub_version: str = "specpilot.retention_hub.v1"
+    workspace_id: str
+    generated_at: str
+    status: CheckStatus
+    retention_score: float = Field(ge=0, le=100)
+    headline: str
+    summary: str
+    metric_cards: dict[str, int | float | str] = Field(default_factory=dict)
+    signals: list[RetentionSignal] = Field(default_factory=list)
+    plays: list[RetentionPlay] = Field(default_factory=list)
+    next_actions: list[str] = Field(default_factory=list)
+    recent_events: list[GrowthEventRecord] = Field(default_factory=list)
+    recent_advisor_answers: list["ReportAdvisorAnswer"] = Field(default_factory=list)
+    recent_purchase_outcomes: list["PurchaseOutcome"] = Field(default_factory=list)
+
+
 class BetaCohortRequest(BaseModel):
     name: str = Field(min_length=2)
     scenario: str = Field(min_length=2)

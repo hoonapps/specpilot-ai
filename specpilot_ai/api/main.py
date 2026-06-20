@@ -91,6 +91,7 @@ from specpilot_ai.core.models import (
     ReportAdvisorQuestionRequest,
     ReportShare,
     ReportShareAssets,
+    RetentionHubDashboard,
     ReviewDecision,
     ReviewDecisionRequest,
     ReviewQueueItem,
@@ -1276,6 +1277,14 @@ def growth_acquisition_hub(
         workspace.workspace_id,
         limit=limit,
     )
+
+
+@app.get("/growth/retention-hub", response_model=RetentionHubDashboard)
+def growth_retention_hub(
+    limit: int = 12,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> RetentionHubDashboard:
+    return _store().retention_hub_for_workspace(workspace.workspace_id, limit=limit)
 
 
 @app.get("/beta/readiness", response_model=BetaReadinessDashboard)

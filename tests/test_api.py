@@ -734,6 +734,118 @@ def test_growth_acquisition_hub_maps_public_launch_surfaces() -> None:
     assert payload["recent_growth_events"]
 
 
+def test_growth_retention_hub_prioritizes_reengagement_loops() -> None:
+    workspace = {"X-SpecPilot-Key": f"pytest-retention-{uuid4().hex}"}
+    analysis = client.post(
+        "/analyze",
+        headers=workspace,
+        json={
+            "query": "QHD 게임과 영상 편집용 데스크톱 210만원 안에서 추천해줘",
+            "category": "desktop_pc",
+            "budget_krw": 2_100_000,
+            "purpose": "QHD gaming, Premiere Pro",
+            "must_haves": ["QHD 144Hz", "32GB RAM", "업그레이드 여지"],
+            "exclusions": ["중고", "리퍼"],
+        },
+    )
+    assert analysis.status_code == 200
+    analysis_payload = analysis.json()
+    trace_id = analysis_payload["graph_trace_id"]
+    top = analysis_payload["report"]["top_recommendations"][0]
+    first_alert = analysis_payload["report"]["price_alerts"][0]
+
+    saved = client.post(
+        "/reports/save",
+        headers=workspace,
+        json={"trace_id": trace_id, "title": "리텐션 허브 테스트 리포트"},
+    )
+    assert saved.status_code == 200
+    report_id = saved.json()["report_id"]
+
+    share = client.post(f"/reports/{report_id}/share", headers=workspace)
+    assert share.status_code == 200
+    public_report = client.get(f"/public/reports/{share.json()['share_token']}")
+    assert public_report.status_code == 200
+
+    subscribed = client.post(
+        "/alerts/subscribe",
+        headers=workspace,
+        json={
+            "trace_id": trace_id,
+            "product_id": first_alert["product_id"],
+            "target_price_krw": first_alert["target_price_krw"],
+            "channels": ["email"],
+            "contact": "retention@example.com",
+            "owner_label": "pytest",
+        },
+    )
+    assert subscribed.status_code == 200
+
+    advisor = client.post(
+        f"/reports/{report_id}/advisor-questions",
+        headers=workspace,
+        json={
+            "question": "지금 결제해도 돼, 아니면 목표가까지 기다릴까?",
+            "context": "일주일 안에 구매하고 싶지만 가격 타이밍이 중요합니다.",
+            "selected_product_id": top["product"]["id"],
+            "contact": "retention@example.com",
+        },
+    )
+    assert advisor.status_code == 200
+
+    outcome = client.post(
+        f"/reports/{report_id}/purchase-outcomes",
+        headers=workspace,
+        json={
+            "product_id": top["product"]["id"],
+            "status": "delayed",
+            "reason": "목표가 알림까지 기다리기로 했습니다.",
+            "satisfaction": 4,
+        },
+    )
+    assert outcome.status_code == 200
+
+    event = client.post(
+        "/growth/events",
+        headers=workspace,
+        json={
+            "event_type": "alert_cta",
+            "trace_id": trace_id,
+            "report_id": report_id,
+            "product_id": top["product"]["id"],
+            "source": "pytest",
+            "surface": "retention-hub",
+            "label": "리텐션 허브 가격 알림 클릭",
+        },
+    )
+    assert event.status_code == 200
+
+    hub = client.get("/growth/retention-hub?limit=10", headers=workspace)
+    assert hub.status_code == 200
+    payload = hub.json()
+    assert payload["hub_version"] == "specpilot.retention_hub.v1"
+    assert payload["workspace_id"].startswith("workspace_")
+    assert payload["retention_score"] > 0
+    assert payload["status"] in {"ok", "warning", "blocker"}
+    assert payload["metric_cards"]["saved_reports"] >= 1
+    assert payload["metric_cards"]["active_alerts"] >= 1
+    signal_keys = {signal["key"] for signal in payload["signals"]}
+    assert {
+        "saved_to_alert",
+        "share_revisit",
+        "decision_followup",
+        "advisor_loop",
+        "purchase_learning",
+        "delivery_engagement",
+    } <= signal_keys
+    play_ids = {play["play_id"] for play in payload["plays"]}
+    assert {"price_wait_alert", "outcome_capture", "advisor_rescue"} <= play_ids
+    assert payload["next_actions"]
+    assert payload["recent_events"]
+    assert payload["recent_advisor_answers"]
+    assert payload["recent_purchase_outcomes"]
+
+
 def test_privacy_policy_endpoint_exposes_retention_and_controls() -> None:
     response = client.get("/policy/privacy")
 

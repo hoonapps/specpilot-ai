@@ -97,6 +97,9 @@ from specpilot_ai.core.models import (
     ReportShare,
     ReportShareAssets,
     ReportShareAssetVariant,
+    RetentionHubDashboard,
+    RetentionPlay,
+    RetentionSignal,
     ReviewDecision,
     ReviewQueueItem,
     ReviewStatus,
@@ -2922,6 +2925,42 @@ class SpecPilotStore:
             channel_actions=_public_acquisition_channel_actions(surfaces),
             next_actions=_public_acquisition_next_actions(surfaces, growth, referrals),
             recent_growth_events=growth.recent_events,
+        )
+
+    def retention_hub_for_workspace(
+        self,
+        workspace_id: str,
+        limit: int = 12,
+    ) -> RetentionHubDashboard:
+        metrics = self.metrics_for_workspace(workspace_id)
+        board = self.purchase_decision_board_for_workspace(workspace_id, limit=limit)
+        growth = self.growth_funnel_for_workspace(workspace_id, limit=limit)
+        advisors = self.list_report_advisor_answers_for_workspace(
+            workspace_id,
+            limit=limit,
+        )
+        outcomes = self.list_purchase_outcomes_for_workspace(workspace_id, limit=limit)
+        alerts = self.list_alert_subscriptions_for_workspace(workspace_id, limit=limit)
+        signals = _retention_signals(metrics, board)
+        retention_score = round(
+            sum(signal.score for signal in signals) / max(len(signals), 1),
+            1,
+        )
+        status = _score_status(retention_score, warning=55, ok=75)
+        return RetentionHubDashboard(
+            workspace_id=workspace_id,
+            generated_at=_now(),
+            status=status,
+            retention_score=retention_score,
+            headline=_retention_headline(status, retention_score),
+            summary=_retention_summary(metrics, board, alerts),
+            metric_cards=_retention_metric_cards(metrics, board, len(alerts)),
+            signals=signals,
+            plays=_retention_plays(metrics, board, advisors, outcomes, alerts),
+            next_actions=_retention_next_actions(signals, board),
+            recent_events=growth.recent_events,
+            recent_advisor_answers=advisors[:5],
+            recent_purchase_outcomes=outcomes[:5],
         )
 
     def create_beta_lead_for_workspace(
@@ -8986,6 +9025,272 @@ def _public_acquisition_next_actions(
             deduped.append(action)
     if not deduped:
         deduped.append("모든 공개 표면이 안정적입니다. 검색/커뮤니티 트래픽을 더 배정하세요.")
+    return deduped[:6]
+
+
+def _retention_signal(
+    *,
+    key: str,
+    label: str,
+    score: float,
+    metric: str,
+    insight: str,
+    next_action: str,
+) -> RetentionSignal:
+    normalized_score = round(max(0, min(score, 100)), 1)
+    return RetentionSignal(
+        key=key,
+        label=label,
+        status=_score_status(normalized_score, warning=55, ok=75),
+        score=normalized_score,
+        metric=metric,
+        insight=insight,
+        next_action=next_action,
+    )
+
+
+def _retention_signals(
+    metrics: OperationsMetrics,
+    board: PurchaseDecisionBoard,
+) -> list[RetentionSignal]:
+    saved = max(metrics.saved_reports, 1)
+    report_count = max(board.report_count, 1)
+    delivery_engagements = metrics.completion_delivery_opens + metrics.completion_delivery_clicks
+    return [
+        _retention_signal(
+            key="saved_to_alert",
+            label="저장 리포트 -> 가격 알림",
+            score=min(100.0, (metrics.alert_subscriptions / saved) * 100),
+            metric=f"{metrics.alert_subscriptions}개 알림 / 저장 {metrics.saved_reports}건",
+            insight="가격 대기 사용자를 목표가 알림으로 붙잡는 축입니다.",
+            next_action="가격 대기 판정 리포트에는 목표가 알림 CTA를 상단에 고정하세요.",
+        ),
+        _retention_signal(
+            key="share_revisit",
+            label="공유 리포트 재방문",
+            score=min(100.0, metrics.public_share_views * 8 + metrics.share_cta_clicks * 12),
+            metric=(
+                f"공개 조회 {metrics.public_share_views}회 / "
+                f"공유 CTA {metrics.share_cta_clicks}건"
+            ),
+            insight="가족, 동료, 커뮤니티 검토가 재방문으로 이어지는지 보는 축입니다.",
+            next_action="공유 리포트 하단에 가격 알림과 결제 전 검수 CTA를 함께 배치하세요.",
+        ),
+        _retention_signal(
+            key="decision_followup",
+            label="구매 보드 후속 처리",
+            score=min(
+                100.0,
+                ((report_count - board.missing_outcome_count) / report_count) * 100,
+            ),
+            metric=(
+                f"리포트 {board.report_count}건 / "
+                f"구매 결과 미기록 {board.missing_outcome_count}건"
+            ),
+            insight="저장 리포트가 실제 구매 결과까지 닫혔는지 보는 축입니다.",
+            next_action=(
+                "구매 가능/가격 대기 리포트에는 "
+                "24시간 후 구매 결과 회수 액션을 예약하세요."
+            ),
+        ),
+        _retention_signal(
+            key="advisor_loop",
+            label="저장 리포트 상담 루프",
+            score=min(
+                100.0,
+                metrics.report_advisor_answers * 22
+                + max(0, metrics.report_advisor_warning_answers) * 8,
+            ),
+            metric=(
+                f"상담 {metrics.report_advisor_answers}건 / "
+                f"주의 답변 {metrics.report_advisor_warning_answers}건"
+            ),
+            insight="정적 리포트가 결제 전 대화형 상담으로 이어지는지 보는 축입니다.",
+            next_action="경고 답변이 있는 리포트는 결제 전 검수 또는 판매자 질문으로 연결하세요.",
+        ),
+        _retention_signal(
+            key="purchase_learning",
+            label="구매 결과 학습",
+            score=min(
+                100.0,
+                metrics.purchase_outcomes * 16
+                + metrics.completed_purchase_outcomes * 18
+                - metrics.returned_purchase_outcomes * 12,
+            ),
+            metric=(
+                f"구매 결과 {metrics.purchase_outcomes}건 / "
+                f"전환율 {round(metrics.purchase_conversion_rate * 100)}%"
+            ),
+            insight="실제 구매/이탈/반품이 다음 추천 품질로 돌아오는 축입니다.",
+            next_action=(
+                "구매 결과가 없는 저장 리포트부터 회수하고 "
+                "반품 신호는 학습 인사이트로 보내세요."
+            ),
+        ),
+        _retention_signal(
+            key="delivery_engagement",
+            label="완료 리포트/알림 engagement",
+            score=min(
+                100.0,
+                metrics.sent_alert_deliveries * 12
+                + delivery_engagements * 14
+                - metrics.failed_alert_deliveries * 8,
+            ),
+            metric=(
+                f"알림 발송 {metrics.sent_alert_deliveries}건 / "
+                f"열람+클릭 {delivery_engagements}건"
+            ),
+            insight="제품이 사용자를 다시 불러오는 메시지를 실제로 전달하는 축입니다.",
+            next_action=(
+                "발송 실패가 있으면 채널 설정을 먼저 고치고, "
+                "성공 채널에는 완료 리포트를 붙이세요."
+            ),
+        ),
+    ]
+
+
+def _retention_metric_cards(
+    metrics: OperationsMetrics,
+    board: PurchaseDecisionBoard,
+    active_alerts: int,
+) -> dict[str, int | float | str]:
+    return {
+        "saved_reports": metrics.saved_reports,
+        "active_alerts": active_alerts,
+        "public_share_views": metrics.public_share_views,
+        "missing_outcomes": board.missing_outcome_count,
+        "purchase_conversion_rate": f"{round(metrics.purchase_conversion_rate * 100)}%",
+        "sent_alert_deliveries": metrics.sent_alert_deliveries,
+        "completion_engagements": (
+            metrics.completion_delivery_opens + metrics.completion_delivery_clicks
+        ),
+        "ready_value_krw": board.total_ready_value_krw,
+    }
+
+
+def _retention_headline(status: CheckStatus, score: float) -> str:
+    if status == CheckStatus.ok:
+        return f"리텐션 허브 {score}점, 재방문 루프가 작동하고 있습니다."
+    if status == CheckStatus.warning:
+        return f"리텐션 허브 {score}점, 알림과 구매 결과 회수를 보강하세요."
+    return f"리텐션 허브 {score}점, 첫 재참여 루프를 먼저 만들어야 합니다."
+
+
+def _retention_summary(
+    metrics: OperationsMetrics,
+    board: PurchaseDecisionBoard,
+    alerts: list[AlertSubscription],
+) -> str:
+    return (
+        f"저장 리포트 {metrics.saved_reports}건, 활성 알림 {len(alerts)}개, "
+        f"공유 조회 {metrics.public_share_views}회, 구매 결과 "
+        f"{metrics.purchase_outcomes}건, 미기록 후속 처리 "
+        f"{board.missing_outcome_count}건을 재참여 흐름으로 묶었습니다."
+    )
+
+
+def _retention_plays(
+    metrics: OperationsMetrics,
+    board: PurchaseDecisionBoard,
+    advisors: list[ReportAdvisorAnswer],
+    outcomes: list[PurchaseOutcome],
+    alerts: list[AlertSubscription],
+) -> list[RetentionPlay]:
+    plays = [
+        RetentionPlay(
+            play_id="price_wait_alert",
+            label="가격 대기 리포트 목표가 알림 전환",
+            audience="가격 대기 판정 또는 목표가 차이가 있는 저장 리포트 사용자",
+            trigger="price_wait_count > 0 또는 alert_subscriptions 부족",
+            channel="email/webhook",
+            cta_label="목표가 알림 켜기",
+            cta_target="#price-alert",
+            expected_impact="즉시 구매하지 않는 사용자를 목표가 도달 시점에 다시 부릅니다.",
+            evidence=[
+                f"가격 대기 {board.price_wait_count}건",
+                f"활성 알림 {len(alerts)}개",
+            ],
+        ),
+        RetentionPlay(
+            play_id="outcome_capture",
+            label="구매 결과 회수",
+            audience="저장 리포트는 있지만 구매 결과가 없는 사용자",
+            trigger="missing_outcome_count > 0",
+            channel="in_app/completion_report",
+            cta_label="구매 결과 남기기",
+            cta_target="#purchase-outcome",
+            expected_impact="추천이 실제 구매로 이어졌는지 닫힌 루프로 학습합니다.",
+            evidence=[
+                f"구매 결과 미기록 {board.missing_outcome_count}건",
+                f"구매 결과 {metrics.purchase_outcomes}건",
+            ],
+        ),
+        RetentionPlay(
+            play_id="advisor_rescue",
+            label="결제 전 상담 구조",
+            audience="경고 상담 답변 또는 검수 차단이 있는 사용자",
+            trigger="report_advisor_warning_answers 또는 checkout_blocked_count",
+            channel="in_app",
+            cta_label="구매 상담 이어가기",
+            cta_target="#advisor",
+            expected_impact="구매 직전 불확실성을 상담과 검수로 흡수합니다.",
+            evidence=[
+                f"주의 상담 {metrics.report_advisor_warning_answers}건",
+                f"검수 차단 {board.checkout_blocked_count}건",
+            ],
+        ),
+        RetentionPlay(
+            play_id="share_reengagement",
+            label="공유 리포트 재방문 CTA",
+            audience="공유 리포트를 열람한 가족/동료/커뮤니티 검토자",
+            trigger="public_share_views 또는 share_cta_clicks",
+            channel="public_report",
+            cta_label="내 조건으로 다시 분석",
+            cta_target="/r/{share_token}",
+            expected_impact="공유받은 사람을 새 분석과 추천 대기열로 전환합니다.",
+            evidence=[
+                f"공개 조회 {metrics.public_share_views}회",
+                f"공유 CTA {metrics.share_cta_clicks}건",
+            ],
+        ),
+        RetentionPlay(
+            play_id="completion_report_followup",
+            label="완료 리포트 후속 발송",
+            audience="구매 완료 또는 지연 결과가 기록된 사용자",
+            trigger="purchase_outcomes 또는 completion_report_deliveries",
+            channel="email/webhook/sms",
+            cta_label="완료 리포트 보내기",
+            cta_target="#completion-reports",
+            expected_impact="구매 후 만족도와 반품 신호를 회수해 다음 추천 품질을 높입니다.",
+            evidence=[
+                f"완료 리포트 발송 {metrics.completion_report_deliveries}건",
+                f"최근 구매 결과 {len(outcomes)}건",
+            ],
+        ),
+    ]
+    if advisors:
+        plays[2].evidence.append(f"최근 상담: {advisors[0].question[:36]}")
+    if outcomes:
+        plays[4].evidence.append(f"최근 결과: {outcomes[0].status.value}")
+    return plays
+
+
+def _retention_next_actions(
+    signals: list[RetentionSignal],
+    board: PurchaseDecisionBoard,
+) -> list[str]:
+    actions = [
+        signal.next_action
+        for signal in sorted(signals, key=lambda item: item.score)
+        if signal.status != CheckStatus.ok
+    ][:4]
+    actions.extend(board.next_actions[:2])
+    deduped: list[str] = []
+    for action in actions:
+        if action and action not in deduped:
+            deduped.append(action)
+    if not deduped:
+        deduped.append("리텐션 루프가 안정적입니다. 완료 리포트와 추천 대기열 CTA를 확대하세요.")
     return deduped[:6]
 
 
