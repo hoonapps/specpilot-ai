@@ -73,6 +73,9 @@ from specpilot_ai.core.models import (
     LaunchPulseDashboard,
     LaunchPulseMetric,
     LaunchPulseSignal,
+    LaunchWarRoomDashboard,
+    LaunchWarRoomPlay,
+    LaunchWarRoomSignal,
     ObservabilityDispatchResponse,
     ObservabilityExportRecord,
     ObservabilityExportRequest,
@@ -3318,6 +3321,79 @@ class SpecPilotStore:
                 growth.next_actions,
             ),
             recent_growth_events=growth.recent_events[:limit],
+        )
+
+    def launch_war_room_for_workspace(
+        self,
+        workspace_id: str,
+        limit: int = 12,
+    ) -> LaunchWarRoomDashboard:
+        metrics = self.metrics_for_workspace(workspace_id)
+        pulse = self.launch_pulse_for_workspace(workspace_id, limit=limit)
+        smoke = self.public_launch_smoke_dashboard_for_workspace(
+            workspace_id,
+            limit=limit,
+        )
+        conversion = self.public_conversion_board_for_workspace(
+            workspace_id,
+            limit=limit,
+        )
+        gate = self.launch_gate_for_workspace(workspace_id)
+        regression = self.ops_regression_for_workspace(workspace_id, window_size=5)
+        experiments = self.launch_experiment_dashboard_for_workspace(
+            workspace_id,
+            limit=limit,
+        )
+        referrals = self.waitlist_referral_dashboard_for_workspace(
+            workspace_id,
+            limit=limit,
+        )
+        pricing = self.pricing_dashboard_for_workspace(workspace_id)
+        signals = _launch_war_room_signals(
+            pulse=pulse,
+            smoke=smoke,
+            conversion=conversion,
+            gate=gate,
+            regression=regression,
+            experiments=experiments,
+            metrics=metrics,
+            referrals=referrals,
+            pricing=pricing,
+        )
+        plays = _launch_war_room_plays(signals, metrics, referrals, pricing)
+        command_score = round(
+            pulse.pulse_score * 0.24
+            + smoke.smoke_score * 0.2
+            + conversion.conversion_score * 0.2
+            + gate.launch_readiness_score * 0.2
+            + _launch_war_room_regression_score(regression.status) * 0.16,
+            1,
+        )
+        status = _launch_war_room_status(signals, command_score)
+        decision = _launch_war_room_decision(status, command_score, signals)
+        return LaunchWarRoomDashboard(
+            workspace_id=workspace_id,
+            generated_at=_now(),
+            status=status,
+            command_score=command_score,
+            decision=decision,
+            headline=_launch_war_room_headline(status, decision, command_score),
+            summary=_launch_war_room_summary(signals, plays, pulse, smoke),
+            metric_cards={
+                "pulse_score": pulse.pulse_score,
+                "smoke_score": smoke.smoke_score,
+                "conversion_score": conversion.conversion_score,
+                "launch_readiness_score": gate.launch_readiness_score,
+                "regression_status": regression.status.value,
+                "growth_events": metrics.growth_events,
+                "referral_waitlist": referrals.total_referrals,
+                "pricing_intents": pricing.intent_count,
+                "active_experiments": experiments.active_experiment_count,
+            },
+            signals=signals,
+            plays=plays,
+            escalation_paths=_launch_war_room_escalation_paths(signals),
+            next_actions=_launch_war_room_next_actions(signals, plays),
         )
 
     def retention_hub_for_workspace(
@@ -12334,6 +12410,346 @@ def _public_launch_smoke_next_actions(
         actions.append("런칭 직후 24시간 동안 공유, 액션 라우터, 요금제 관심 이벤트를 계속 확인하세요.")
     actions.append("공개 URL을 커뮤니티와 메신저에 붙여 미리보기 제목/이미지/설명을 실제로 확인하세요.")
     actions.append("스모크 warning 항목은 출시 배포 플랜의 D-day 체크리스트에 반영하세요.")
+    return list(dict.fromkeys(actions))[:6]
+
+
+def _launch_war_room_regression_score(status: CheckStatus) -> float:
+    if status == CheckStatus.ok:
+        return 92.0
+    if status == CheckStatus.warning:
+        return 62.0
+    return 24.0
+
+
+def _launch_war_room_signals(
+    *,
+    pulse: LaunchPulseDashboard,
+    smoke: PublicLaunchSmokeDashboard,
+    conversion: PublicConversionBoard,
+    gate: LaunchGateDashboard,
+    regression: OpsRegressionDashboard,
+    experiments: LaunchExperimentDashboard,
+    metrics: OperationsMetrics,
+    referrals: WaitlistReferralDashboard,
+    pricing: PricingDashboard,
+) -> list[LaunchWarRoomSignal]:
+    return [
+        _launch_war_room_signal(
+            key="reaction_pulse",
+            label="공개 반응 온도",
+            status=pulse.status,
+            metric=f"Pulse {round(pulse.pulse_score)}점",
+            evidence=pulse.summary,
+            owner="growth",
+            next_action=pulse.top_actions[0]
+            if pulse.top_actions
+            else "첫 24시간 반응 표본을 더 모으세요.",
+        ),
+        _launch_war_room_signal(
+            key="publish_surface",
+            label="공개 표면 스모크",
+            status=smoke.status,
+            metric=f"스모크 {round(smoke.smoke_score)}점 · blocker {smoke.blocker_count}개",
+            evidence=smoke.summary,
+            owner="launch-ops",
+            next_action=smoke.next_actions[0]
+            if smoke.next_actions
+            else "공개 URL과 측정 이벤트를 유지하세요.",
+        ),
+        _launch_war_room_signal(
+            key="conversion",
+            label="전환 병목",
+            status=conversion.status,
+            metric=f"전환 {round(conversion.conversion_score)}점",
+            evidence=conversion.summary,
+            owner="product",
+            next_action=conversion.next_actions[0]
+            if conversion.next_actions
+            else "전환 단계별 병목을 계속 확인하세요.",
+        ),
+        _launch_war_room_signal(
+            key="launch_gate",
+            label="go/no-go 게이트",
+            status=gate.status,
+            metric=f"{gate.decision} · readiness {round(gate.launch_readiness_score)}점",
+            evidence=gate.summary,
+            owner="ops",
+            next_action=gate.required_actions[0]
+            if gate.required_actions
+            else "게이트 상태를 유지하세요.",
+        ),
+        _launch_war_room_signal(
+            key="quality_regression",
+            label="품질/비용 회귀",
+            status=regression.status,
+            metric=(
+                f"품질 변화 {regression.quality_delta}점 · "
+                f"비용 변화 {round(regression.cost_delta_rate * 100)}%"
+            ),
+            evidence=regression.summary,
+            owner="engineering",
+            next_action=regression.next_actions[0]
+            if regression.next_actions
+            else "품질 회귀와 provider 차단율을 계속 모니터링하세요.",
+        ),
+        _launch_war_room_signal(
+            key="experiment_velocity",
+            label="CTA 실험 속도",
+            status=experiments.status,
+            metric=(
+                f"활성 {experiments.active_experiment_count}개 · "
+                f"전환 {round(experiments.conversion_rate * 100)}%"
+            ),
+            evidence=experiments.summary,
+            owner="growth",
+            next_action=experiments.next_actions[0]
+            if experiments.next_actions
+            else "승자 후보 CTA를 다음 채널에 확장하세요.",
+        ),
+        _launch_war_room_signal(
+            key="share_referral",
+            label="공유/추천 루프",
+            status=_pulse_count_status(referrals.total_referrals, 1, 5),
+            metric=(
+                f"추천 대기열 {referrals.total_referrals}명 · "
+                f"추천 유입 {referrals.referred_signup_count}명"
+            ),
+            evidence=referrals.summary,
+            owner="community",
+            next_action=referrals.next_actions[0]
+            if referrals.next_actions
+            else "공유 문구와 초대 링크를 상단 CTA에 유지하세요.",
+        ),
+        _launch_war_room_signal(
+            key="paid_intent",
+            label="유료 수요",
+            status=pricing.readiness_status,
+            metric=(
+                f"요금제 관심 {pricing.intent_count}건 · "
+                f"예상 MRR {pricing.estimated_mrr_krw:,}원"
+            ),
+            evidence=pricing.summary,
+            owner="sales",
+            next_action=pricing.next_actions[0]
+            if pricing.next_actions
+            else "Premium/Team 의향 리드를 24시간 안에 후속 연락하세요.",
+        ),
+        _launch_war_room_signal(
+            key="measurement_feed",
+            label="측정 이벤트",
+            status=CheckStatus.ok if metrics.growth_events else CheckStatus.warning,
+            metric=f"성장 이벤트 {metrics.growth_events}건",
+            evidence=(
+                f"추천 클릭 {metrics.recommendation_card_clicks}건, "
+                f"공유 CTA {metrics.share_cta_clicks}건, "
+                f"구독 CTA {metrics.subscription_cta_clicks}건"
+            ),
+            owner="analytics",
+            next_action=(
+                "CTA 클릭이 성장 퍼널에 계속 저장되는지 확인하세요."
+                if metrics.growth_events
+                else "런칭 페이지 첫 CTA 클릭을 growth event로 기록하세요."
+            ),
+        ),
+    ]
+
+
+def _launch_war_room_signal(
+    *,
+    key: str,
+    label: str,
+    status: CheckStatus,
+    metric: str,
+    evidence: str,
+    owner: str,
+    next_action: str,
+) -> LaunchWarRoomSignal:
+    return LaunchWarRoomSignal(
+        key=key,
+        label=label,
+        status=status,
+        metric=metric,
+        evidence=evidence,
+        owner=owner,
+        next_action=next_action,
+    )
+
+
+def _launch_war_room_plays(
+    signals: list[LaunchWarRoomSignal],
+    metrics: OperationsMetrics,
+    referrals: WaitlistReferralDashboard,
+    pricing: PricingDashboard,
+) -> list[LaunchWarRoomPlay]:
+    by_key = {signal.key: signal for signal in signals}
+    plays = [
+        _launch_war_room_play(
+            play_id="amplify_hot_surface",
+            label="반응 표면 확대",
+            status=by_key["reaction_pulse"].status,
+            trigger=by_key["reaction_pulse"].metric,
+            action="Pulse 상위 표면의 CTA와 공유 문구를 D-day 채널에 재배치",
+            expected_impact="첫 방문자의 분석 시작과 공유 전환을 동시에 끌어올립니다.",
+            owner="growth",
+        ),
+        _launch_war_room_play(
+            play_id="fix_publish_warning",
+            label="공개 표면 경고 닫기",
+            status=by_key["publish_surface"].status,
+            trigger=by_key["publish_surface"].metric,
+            action="스모크 warning/blocker 항목의 URL, 미리보기, 측정 이벤트를 즉시 수정",
+            expected_impact="커뮤니티 공유 전에 깨진 링크와 추적 누락을 막습니다.",
+            owner="launch-ops",
+        ),
+        _launch_war_room_play(
+            play_id="rescue_activation",
+            label="활성화 병목 복구",
+            status=by_key["conversion"].status,
+            trigger=by_key["conversion"].metric,
+            action="첫 구매 진단 콘시어지와 액션 라우터의 최상단 CTA를 전환 병목 기준으로 교체",
+            expected_impact="첫 클릭 손실을 줄이고 분석 실행 표본을 늘립니다.",
+            owner="product",
+        ),
+        _launch_war_room_play(
+            play_id="quality_hold",
+            label="품질 회귀 보류",
+            status=by_key["quality_regression"].status,
+            trigger=by_key["quality_regression"].metric,
+            action="품질 blocker가 있으면 배포 확장을 보류하고 회귀 원인을 우선 수정",
+            expected_impact="공개 후 신뢰를 떨어뜨리는 추천 품질 문제를 조기에 차단합니다.",
+            owner="engineering",
+        ),
+        _launch_war_room_play(
+            play_id="follow_paid_intent",
+            label="유료 관심 24시간 후속",
+            status=by_key["paid_intent"].status,
+            trigger=f"요금제 관심 {pricing.intent_count}건",
+            action="Premium/Team 관심 리드에 상담 안건과 ROI 포인트를 보내기",
+            expected_impact="초기 호응을 실제 수익화 검증으로 연결합니다.",
+            owner="sales",
+        ),
+        _launch_war_room_play(
+            play_id="referral_push",
+            label="추천 루프 밀기",
+            status=by_key["share_referral"].status,
+            trigger=f"추천 대기열 {referrals.total_referrals}명",
+            action="추천 보상 사다리와 채널별 공유 문구를 공유 확산팩 상단에 고정",
+            expected_impact="첫 사용자 반응을 지인/커뮤니티 유입으로 확장합니다.",
+            owner="community",
+        ),
+    ]
+    if metrics.growth_events == 0:
+        plays.insert(
+            0,
+            _launch_war_room_play(
+                play_id="repair_measurement",
+                label="측정 이벤트 복구",
+                status=CheckStatus.warning,
+                trigger="성장 이벤트 0건",
+                action="런칭 CTA, 공유 복사, 액션 라우터 클릭 이벤트를 먼저 점검",
+                expected_impact="호응이 생겨도 놓치지 않도록 판단 데이터를 확보합니다.",
+                owner="analytics",
+            ),
+        )
+    return plays[:7]
+
+
+def _launch_war_room_play(
+    *,
+    play_id: str,
+    label: str,
+    status: CheckStatus,
+    trigger: str,
+    action: str,
+    expected_impact: str,
+    owner: str,
+) -> LaunchWarRoomPlay:
+    return LaunchWarRoomPlay(
+        play_id=play_id,
+        label=label,
+        status=status,
+        trigger=trigger,
+        action=action,
+        expected_impact=expected_impact,
+        owner=owner,
+    )
+
+
+def _launch_war_room_status(
+    signals: list[LaunchWarRoomSignal],
+    command_score: float,
+) -> CheckStatus:
+    if any(signal.status == CheckStatus.blocker for signal in signals) or command_score < 45:
+        return CheckStatus.blocker
+    if command_score < 75 or any(signal.status == CheckStatus.warning for signal in signals):
+        return CheckStatus.warning
+    return CheckStatus.ok
+
+
+def _launch_war_room_decision(
+    status: CheckStatus,
+    command_score: float,
+    signals: list[LaunchWarRoomSignal],
+) -> str:
+    if status == CheckStatus.ok:
+        return "scale"
+    if any(signal.status == CheckStatus.blocker for signal in signals):
+        return "hold_and_fix"
+    if command_score >= 62:
+        return "limited_push"
+    return "collect_more_signal"
+
+
+def _launch_war_room_headline(
+    status: CheckStatus,
+    decision: str,
+    command_score: float,
+) -> str:
+    if status == CheckStatus.ok:
+        return f"런칭 워룸 {round(command_score)}점, 반응 채널을 확대하세요."
+    if decision == "hold_and_fix":
+        return f"런칭 워룸 {round(command_score)}점, blocker를 먼저 닫아야 합니다."
+    return f"런칭 워룸 {round(command_score)}점, 제한 배포로 신호를 더 모으세요."
+
+
+def _launch_war_room_summary(
+    signals: list[LaunchWarRoomSignal],
+    plays: list[LaunchWarRoomPlay],
+    pulse: LaunchPulseDashboard,
+    smoke: PublicLaunchSmokeDashboard,
+) -> str:
+    warning_count = sum(1 for signal in signals if signal.status == CheckStatus.warning)
+    blocker_count = sum(1 for signal in signals if signal.status == CheckStatus.blocker)
+    return (
+        f"Pulse {round(pulse.pulse_score)}점, 스모크 {round(smoke.smoke_score)}점 기준으로 "
+        f"첫 24시간 워룸 신호 {len(signals)}개와 실행 play {len(plays)}개를 구성했습니다. "
+        f"warning {warning_count}개, blocker {blocker_count}개입니다."
+    )
+
+
+def _launch_war_room_escalation_paths(
+    signals: list[LaunchWarRoomSignal],
+) -> list[str]:
+    paths = [
+        f"{signal.owner}: {signal.label} - {signal.next_action}"
+        for signal in signals
+        if signal.status != CheckStatus.ok
+    ]
+    if not paths:
+        paths.append("growth: 반응이 높은 채널의 CTA와 공유 문구를 D+1 배포 슬롯에 확장")
+        paths.append("analytics: 24시간 cohort 리포트로 전환/공유/유료 관심을 고정 기록")
+    return paths[:6]
+
+
+def _launch_war_room_next_actions(
+    signals: list[LaunchWarRoomSignal],
+    plays: list[LaunchWarRoomPlay],
+) -> list[str]:
+    actions = [play.action for play in plays if play.status != CheckStatus.ok]
+    actions.extend(signal.next_action for signal in signals if signal.status == CheckStatus.blocker)
+    if not actions:
+        actions.append("D+1 배포 플랜에 가장 반응이 높은 CTA와 공유 문구를 반영하세요.")
+    actions.append("24시간 후 Pulse, 스모크, 전환 보드 점수를 다시 캡처해 다음 배포 여부를 결정하세요.")
     return list(dict.fromkeys(actions))[:6]
 
 

@@ -1822,6 +1822,62 @@ def test_public_launch_smoke_dashboard_checks_publish_surfaces() -> None:
     assert payload["next_actions"]
 
 
+def test_growth_launch_war_room_prioritizes_first_day_actions() -> None:
+    workspace = {"X-SpecPilot-Key": f"pytest-war-room-{uuid4().hex}"}
+    client.post(
+        "/growth/events",
+        headers=workspace,
+        json={
+            "event_type": "share_cta",
+            "source": "pytest-war-room",
+            "surface": "launch",
+            "label": "워룸 공유 CTA",
+        },
+    )
+    client.post(
+        "/growth/waitlist-referrals",
+        headers=workspace,
+        json={
+            "email": "war-room@example.com",
+            "persona": "creator",
+            "use_case": "첫 24시간 공개 반응을 보고 싶습니다.",
+            "contact_consent": True,
+            "source": "pytest-war-room",
+        },
+    )
+
+    response = client.get("/growth/launch-war-room?limit=8", headers=workspace)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["war_room_version"] == "specpilot.launch_war_room.v1"
+    assert payload["workspace_id"].startswith("workspace_")
+    assert payload["status"] in {"ok", "warning", "blocker"}
+    assert payload["decision"] in {
+        "scale",
+        "limited_push",
+        "hold_and_fix",
+        "collect_more_signal",
+    }
+    assert payload["command_score"] > 0
+    signal_keys = {signal["key"] for signal in payload["signals"]}
+    assert {
+        "reaction_pulse",
+        "publish_surface",
+        "conversion",
+        "launch_gate",
+        "quality_regression",
+        "experiment_velocity",
+        "share_referral",
+        "paid_intent",
+        "measurement_feed",
+    } <= signal_keys
+    play_ids = {play["play_id"] for play in payload["plays"]}
+    assert {"amplify_hot_surface", "fix_publish_warning", "rescue_activation"} <= play_ids
+    assert payload["metric_cards"]["growth_events"] >= 1
+    assert payload["escalation_paths"]
+    assert payload["next_actions"]
+
+
 def test_public_launch_room_packages_demo_proof_and_growth_ctas() -> None:
     workspace = {"X-SpecPilot-Key": f"pytest-launch-room-{uuid4().hex}"}
     referral = client.post(

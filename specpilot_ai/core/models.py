@@ -1895,6 +1895,42 @@ class LaunchPulseDashboard(BaseModel):
     recent_growth_events: list[GrowthEventRecord] = Field(default_factory=list)
 
 
+class LaunchWarRoomSignal(BaseModel):
+    key: str
+    label: str
+    status: CheckStatus
+    metric: str
+    evidence: str
+    owner: str
+    next_action: str
+
+
+class LaunchWarRoomPlay(BaseModel):
+    play_id: str
+    label: str
+    status: CheckStatus
+    trigger: str
+    action: str
+    expected_impact: str
+    owner: str
+
+
+class LaunchWarRoomDashboard(BaseModel):
+    war_room_version: str = "specpilot.launch_war_room.v1"
+    workspace_id: str
+    generated_at: str
+    status: CheckStatus
+    command_score: float = Field(ge=0, le=100)
+    decision: str
+    headline: str
+    summary: str
+    metric_cards: dict[str, int | float | str] = Field(default_factory=dict)
+    signals: list[LaunchWarRoomSignal] = Field(default_factory=list)
+    plays: list[LaunchWarRoomPlay] = Field(default_factory=list)
+    escalation_paths: list[str] = Field(default_factory=list)
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class PublicAcquisitionSurface(BaseModel):
     key: str
     label: str
