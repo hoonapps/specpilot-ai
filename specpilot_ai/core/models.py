@@ -802,6 +802,30 @@ class ReferralShareKit(BaseModel):
     next_actions: list[str] = Field(default_factory=list)
 
 
+class ReferralRewardTier(BaseModel):
+    tier_id: str
+    label: str
+    required_referrals: int = Field(ge=0)
+    benefit: str
+    status: str
+
+
+class ReferralRewardProgress(BaseModel):
+    reward_version: str = "specpilot.referral_rewards.v1"
+    workspace_id: str
+    referral_code: str
+    referral_url: str
+    generated_at: str
+    referred_signup_count: int = 0
+    headline: str
+    summary: str
+    progress_percent: int = Field(ge=0, le=100)
+    current_tier: ReferralRewardTier | None = None
+    next_tier: ReferralRewardTier | None = None
+    tiers: list[ReferralRewardTier] = Field(default_factory=list)
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class PricingPlan(BaseModel):
     plan_id: str
     name: str

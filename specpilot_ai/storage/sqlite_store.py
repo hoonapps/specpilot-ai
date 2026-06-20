@@ -105,6 +105,8 @@ from specpilot_ai.core.models import (
     PurchaseOutcomeStatus,
     QualityDashboard,
     ReferralLeaderboardItem,
+    ReferralRewardProgress,
+    ReferralRewardTier,
     ReferralShareKit,
     ReferralShareKitVariant,
     ReportAdvisorAnswer,
@@ -3627,6 +3629,39 @@ class SpecPilotStore:
                 "커뮤니티에는 예산, 용도, 구매 시점이 보이는 문구로 반응을 확인하세요.",
                 "추천 유입이 생기면 상위 추천자에게 우선 초대나 팀 구매 인터뷰를 제안하세요.",
             ],
+        )
+
+    def referral_reward_progress_for_workspace(
+        self,
+        workspace_id: str,
+        referral_code: str,
+    ) -> ReferralRewardProgress | None:
+        code = referral_code.strip().upper()
+        if not code:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT wr.*,
+                    (
+                        SELECT COUNT(*)
+                        FROM waitlist_referrals child
+                        WHERE child.workspace_id = wr.workspace_id
+                          AND child.referred_by_code = wr.referral_code
+                    ) AS referred_signup_count
+                FROM waitlist_referrals wr
+                WHERE wr.workspace_id = ? AND wr.referral_code = ?
+                LIMIT 1
+                """,
+                (workspace_id, code),
+            ).fetchone()
+        if row is None:
+            return None
+        referral = _waitlist_referral_from_row(row)
+        return _referral_reward_progress(
+            workspace_id=workspace_id,
+            referral=referral,
+            referral_url=self._referral_url(referral.referral_code),
         )
 
     def create_subscription_intent_for_workspace(
@@ -9228,6 +9263,98 @@ def _referral_share_kit_variants(
             ),
         ),
     ]
+
+
+def _referral_reward_progress(
+    workspace_id: str,
+    referral: WaitlistReferral,
+    referral_url: str,
+) -> ReferralRewardProgress:
+    referred = referral.referred_signup_count
+    tier_specs = [
+        ("first-share", "첫 공유 성취", 1, "공개 베타 초대 우선순위 +10점"),
+        ("early-access", "우선 초대권", 3, "오픈 전 우선 분석 슬롯과 새 기능 알림"),
+        ("premium-trial", "Premium 체험", 5, "Premium 구매 코치 1개월 체험권"),
+        ("team-session", "팀 구매 상담", 10, "팀 장비 구매 표준안 1회 상담"),
+    ]
+    next_required = next(
+        (required for _, _, required, _ in tier_specs if referred < required),
+        tier_specs[-1][2],
+    )
+    tiers = [
+        ReferralRewardTier(
+            tier_id=tier_id,
+            label=label,
+            required_referrals=required,
+            benefit=benefit,
+            status=(
+                "achieved"
+                if referred >= required
+                else "next"
+                if required == next_required
+                else "locked"
+            ),
+        )
+        for tier_id, label, required, benefit in tier_specs
+    ]
+    achieved = [tier for tier in tiers if tier.status == "achieved"]
+    next_tier = next((tier for tier in tiers if tier.status == "next"), None)
+    current_tier = achieved[-1] if achieved else None
+    progress_percent = (
+        100
+        if next_tier is None
+        else round(referred / next_tier.required_referrals * 100)
+    )
+    progress_percent = min(100, max(0, progress_percent))
+    if next_tier is None:
+        headline = "추천 보상 사다리를 모두 달성했습니다."
+        summary = "상위 추천자로 확인됐습니다. 팀 구매 상담과 제품 공동 개선 인터뷰를 제안하세요."
+    elif referred == 0:
+        headline = f"{next_tier.label}까지 첫 추천 1명이 필요합니다."
+        summary = "초대 링크를 가장 가까운 구매 예정자에게 먼저 보내면 보상 진행률이 시작됩니다."
+    else:
+        remaining = next_tier.required_referrals - referred
+        headline = f"{next_tier.label}까지 {remaining}명 남았습니다."
+        summary = (
+            f"현재 추천 유입 {referred}명입니다. {next_tier.required_referrals}명 달성 시 "
+            f"{next_tier.benefit}을 제공합니다."
+        )
+    return ReferralRewardProgress(
+        workspace_id=workspace_id,
+        referral_code=referral.referral_code,
+        referral_url=referral_url,
+        generated_at=_now(),
+        referred_signup_count=referred,
+        headline=headline,
+        summary=summary,
+        progress_percent=progress_percent,
+        current_tier=current_tier,
+        next_tier=next_tier,
+        tiers=tiers,
+        next_actions=_referral_reward_next_actions(referral, referral_url, next_tier),
+    )
+
+
+def _referral_reward_next_actions(
+    referral: WaitlistReferral,
+    referral_url: str,
+    next_tier: ReferralRewardTier | None,
+) -> list[str]:
+    actions = [
+        "카카오톡 문구로 가까운 구매 예정자 3명에게 먼저 보내세요.",
+        (
+            f"커뮤니티 글에는 추천 코드 {referral.referral_code}와 "
+            f"초대 링크 {referral_url}를 함께 넣으세요."
+        ),
+    ]
+    if next_tier is not None:
+        actions.insert(
+            0,
+            f"{next_tier.label} 보상까지 필요한 추천 수를 공유 문구 상단에 노출하세요.",
+        )
+    else:
+        actions.insert(0, "상위 추천자 badge와 팀 구매 인터뷰 CTA를 노출하세요.")
+    return actions[:3]
 
 
 def _default_channel_name(channel: str) -> str:

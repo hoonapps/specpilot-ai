@@ -99,6 +99,7 @@ from specpilot_ai.core.models import (
     PurchaseOutcomeRequest,
     PurchaseStartConcierge,
     QualityDashboard,
+    ReferralRewardProgress,
     ReferralShareKit,
     ReportAdvisorAnswer,
     ReportAdvisorQuestionRequest,
@@ -1435,6 +1436,23 @@ def referral_share_kit(
     if kit is None:
         raise HTTPException(status_code=404, detail="Referral code not found")
     return kit
+
+
+@app.get(
+    "/growth/referral-rewards/{referral_code}",
+    response_model=ReferralRewardProgress,
+)
+def referral_rewards(
+    referral_code: str,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> ReferralRewardProgress:
+    progress = _store().referral_reward_progress_for_workspace(
+        workspace.workspace_id,
+        referral_code,
+    )
+    if progress is None:
+        raise HTTPException(status_code=404, detail="Referral code not found")
+    return progress
 
 
 @app.get("/growth/launch-kit", response_model=LaunchCampaignKit)

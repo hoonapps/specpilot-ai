@@ -482,11 +482,35 @@ def test_waitlist_referrals_create_share_loop_and_dashboard() -> None:
     )
     assert share_kit_payload["next_actions"]
 
+    rewards = client.get(
+        f"/growth/referral-rewards/{first_payload['referral_code']}",
+        headers=workspace,
+    )
+    assert rewards.status_code == 200
+    rewards_payload = rewards.json()
+    assert rewards_payload["reward_version"] == "specpilot.referral_rewards.v1"
+    assert rewards_payload["referral_code"] == first_payload["referral_code"]
+    assert rewards_payload["referred_signup_count"] == 1
+    assert rewards_payload["current_tier"]["tier_id"] == "first-share"
+    assert rewards_payload["next_tier"]["tier_id"] == "early-access"
+    assert rewards_payload["progress_percent"] > 0
+    assert {tier["status"] for tier in rewards_payload["tiers"]} >= {
+        "achieved",
+        "next",
+    }
+    assert rewards_payload["next_actions"]
+
     isolated_kit = client.get(
         f"/growth/referral-share-kit/{first_payload['referral_code']}",
         headers=other_workspace,
     )
     assert isolated_kit.status_code == 404
+
+    isolated_rewards = client.get(
+        f"/growth/referral-rewards/{first_payload['referral_code']}",
+        headers=other_workspace,
+    )
+    assert isolated_rewards.status_code == 404
 
     isolated = client.get("/growth/referral-dashboard", headers=other_workspace)
     assert isolated.status_code == 200
