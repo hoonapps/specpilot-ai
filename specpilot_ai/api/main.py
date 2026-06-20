@@ -122,6 +122,7 @@ from specpilot_ai.core.models import (
     PublicReferralLeaderboard,
     PublicReport,
     PublicSetupCompatibilityKit,
+    PublicShoppingCartIntakeKit,
     PublicSocialProofWall,
     PublicSpecRescueKit,
     PublicSpecRiskScanner,
@@ -150,6 +151,7 @@ from specpilot_ai.core.models import (
     SavedReportSummary,
     SaveReportRequest,
     SetupCompatibilityRequest,
+    ShoppingCartIntakeRequest,
     SourceAdapterStatus,
     SourceCollectionRequest,
     SourceCollectionResponse,
@@ -209,6 +211,7 @@ from specpilot_ai.services.onboarding import purchase_onboarding_playbooks
 from specpilot_ai.services.price_watch import build_public_price_watch_kit
 from specpilot_ai.services.purchase_approval import build_public_purchase_approval_brief_kit
 from specpilot_ai.services.setup_compatibility import build_public_setup_compatibility_kit
+from specpilot_ai.services.shopping_cart_intake import build_public_shopping_cart_intake_kit
 from specpilot_ai.services.spec_rescue import build_public_spec_rescue_kit
 from specpilot_ai.services.spec_risk_scanner import (
     build_checkout_nudge_kit,
@@ -1242,6 +1245,16 @@ def public_setup_compatibility_kit(
     request: SetupCompatibilityRequest,
 ) -> PublicSetupCompatibilityKit:
     return build_public_setup_compatibility_kit(request)
+
+
+@app.post(
+    "/public/shopping-cart-intake-kit",
+    response_model=PublicShoppingCartIntakeKit,
+)
+def public_shopping_cart_intake_kit(
+    request: ShoppingCartIntakeRequest,
+) -> PublicShoppingCartIntakeKit:
+    return build_public_shopping_cart_intake_kit(request)
 
 
 @app.post(

@@ -1633,6 +1633,62 @@ class PublicSetupCompatibilityKit(BaseModel):
     next_actions: list[str] = Field(default_factory=list)
 
 
+class ShoppingCartItemInput(BaseModel):
+    title: str
+    option_text: str = ""
+    price_krw: int | None = Field(default=None, ge=0, le=30_000_000)
+    quantity: int = Field(default=1, ge=1, le=99)
+    seller: str = ""
+    url: str = ""
+
+
+class ShoppingCartIntakeRequest(BaseModel):
+    category: Category = Category.desktop_pc
+    cart_text: str = ""
+    items: list[ShoppingCartItemInput] = Field(default_factory=list)
+    budget_krw: int = Field(default=2_200_000, ge=300_000, le=30_000_000)
+    purpose: str = "qhd_creator"
+    source: str = "web"
+
+
+class ShoppingCartLine(BaseModel):
+    line_id: str
+    title: str
+    normalized_role: str
+    quantity: int
+    price_krw: int | None = None
+    status: CheckStatus
+    evidence: str
+    recommendation: str
+
+
+class PublicShoppingCartIntakeKit(BaseModel):
+    kit_version: str = "specpilot.public_shopping_cart_intake_kit.v1"
+    generated_at: str
+    category: Category
+    item_count: int = 0
+    cart_total_krw: int | None = None
+    budget_delta_krw: int | None = None
+    readiness_score: float = Field(ge=0, le=100)
+    verdict: str
+    headline: str
+    summary: str
+    blocker_count: int = 0
+    warning_count: int = 0
+    lines: list[ShoppingCartLine] = Field(default_factory=list)
+    detected_slots: list[str] = Field(default_factory=list)
+    missing_slots: list[str] = Field(default_factory=list)
+    duplicate_warnings: list[str] = Field(default_factory=list)
+    seller_questions: list[str] = Field(default_factory=list)
+    scanner_prefill: SpecRiskScannerRequest
+    approval_prefill: "PurchaseApprovalBriefRequest"
+    analysis_prefill: str
+    share_copy: str
+    primary_cta_label: str = "장바구니 조건으로 분석 시작"
+    primary_cta_path: str = "#analysis"
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class ListingDecoderRequest(BaseModel):
     category: Category = Category.desktop_pc
     product_title: str = "컴퓨터 구매 후보"

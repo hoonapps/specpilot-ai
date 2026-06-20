@@ -750,6 +750,82 @@ def test_public_setup_compatibility_kit_checks_pc_and_laptop_fit() -> None:
     assert any(check["check_id"] == "battery" for check in laptop_payload["checks"])
 
 
+def test_public_shopping_cart_intake_kit_turns_cart_into_prefill() -> None:
+    desktop = client.post(
+        "/public/shopping-cart-intake-kit",
+        json={
+            "category": "desktop_pc",
+            "budget_krw": 2_200_000,
+            "purpose": "qhd_creator",
+            "items": [
+                {
+                    "title": "AMD Ryzen 7 7800X3D",
+                    "price_krw": 430_000,
+                    "seller": "PC Mall",
+                },
+                {
+                    "title": "RTX 4070 SUPER 12GB",
+                    "price_krw": 910_000,
+                    "seller": "PC Mall",
+                },
+                {"title": "DDR5 RAM 32GB", "price_krw": 145_000},
+                {"title": "NVMe SSD 1TB", "price_krw": 110_000},
+                {"title": "B650 메인보드", "price_krw": 210_000},
+                {"title": "750W 파워", "price_krw": 120_000},
+                {"title": "ATX 케이스", "price_krw": 95_000},
+                {"title": "Windows 11 Home", "price_krw": 160_000},
+            ],
+            "source": "pytest",
+        },
+    )
+
+    assert desktop.status_code == 200
+    payload = desktop.json()
+    assert payload["kit_version"] == "specpilot.public_shopping_cart_intake_kit.v1"
+    assert payload["category"] == "desktop_pc"
+    assert payload["item_count"] == 8
+    assert payload["cart_total_krw"] == 2_180_000
+    assert payload["budget_delta_krw"] == -20_000
+    assert payload["verdict"] in {"ready", "verify"}
+    assert payload["blocker_count"] == 0
+    assert {"cpu", "gpu", "ram", "storage", "motherboard", "psu", "case"} <= set(
+        payload["detected_slots"]
+    )
+    assert not {"cpu", "gpu"} & set(payload["missing_slots"])
+    assert payload["scanner_prefill"]["source"] == "shopping_cart_intake"
+    assert payload["scanner_prefill"]["cart_total_krw"] == 2_180_000
+    assert payload["approval_prefill"]["source"] == "shopping_cart_intake"
+    assert payload["approval_prefill"]["cart_total_krw"] == 2_180_000
+    assert "장바구니" in payload["analysis_prefill"]
+    assert "SpecPilot AI 장바구니 인테이크" in payload["share_copy"]
+    assert payload["primary_cta_path"] == "#analysis"
+    assert payload["seller_questions"]
+    assert payload["next_actions"]
+
+    risky = client.post(
+        "/public/shopping-cart-intake-kit",
+        json={
+            "category": "laptop",
+            "cart_text": (
+                "CreatorBook 16 RTX 4060 리퍼 해외배송 1,780,000원\n"
+                "Windows 미포함 FreeDOS 0원\n"
+                "RAM 16GB SSD 512GB"
+            ),
+            "budget_krw": 1_600_000,
+            "purpose": "portable_creator",
+        },
+    )
+    assert risky.status_code == 200
+    risky_payload = risky.json()
+    assert risky_payload["verdict"] == "hold"
+    assert risky_payload["blocker_count"] >= 1
+    assert risky_payload["cart_total_krw"] == 1_780_000
+    assert any(line["status"] == "warning" for line in risky_payload["lines"])
+    assert any("AS" in question or "반품" in question for question in risky_payload["seller_questions"])
+    assert risky_payload["approval_prefill"]["verdict"] == "hold"
+    assert any("결제하지" in action for action in risky_payload["next_actions"])
+
+
 def test_public_purchase_approval_brief_kit_builds_shareable_vote_packet() -> None:
     verify = client.post(
         "/public/purchase-approval-brief-kit",

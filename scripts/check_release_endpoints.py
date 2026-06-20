@@ -99,6 +99,21 @@ CHECKS = (
         ),
     ),
     SmokeCheck(
+        name="public-shopping-cart-intake-kit",
+        method="POST",
+        path="/public/shopping-cart-intake-kit",
+        required_keys=(
+            "kit_version",
+            "cart_total_krw",
+            "readiness_score",
+            "verdict",
+            "lines",
+            "scanner_prefill",
+            "approval_prefill",
+            "share_copy",
+        ),
+    ),
+    SmokeCheck(
         name="public-purchase-approval-brief-kit",
         method="POST",
         path="/public/purchase-approval-brief-kit",
@@ -502,6 +517,23 @@ def run_smoke() -> list[dict[str, Any]]:
                 "form_factor": "ATX tower",
                 "budget_krw": 2_200_000,
                 "purpose": "qhd_creator",
+                "source": "release_smoke",
+            }
+        if check.name == "public-shopping-cart-intake-kit":
+            json_body = {
+                "category": "desktop_pc",
+                "budget_krw": 2_200_000,
+                "purpose": "qhd_creator",
+                "items": [
+                    {"title": "Ryzen 7 7800X3D", "price_krw": 430000},
+                    {"title": "RTX 4070 SUPER 12GB", "price_krw": 910000},
+                    {"title": "DDR5 RAM 32GB", "price_krw": 145000},
+                    {"title": "NVMe SSD 1TB", "price_krw": 110000},
+                    {"title": "B650 메인보드", "price_krw": 210000},
+                    {"title": "750W 파워", "price_krw": 120000},
+                    {"title": "ATX 케이스", "price_krw": 95000},
+                    {"title": "Windows 11 Home", "price_krw": 160000},
+                ],
                 "source": "release_smoke",
             }
         if check.name == "public-purchase-approval-brief-kit":

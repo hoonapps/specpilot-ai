@@ -307,6 +307,19 @@ curl -X POST http://127.0.0.1:8000/public/setup-compatibility-kit \
   }'
 ```
 
+공개 장바구니 인테이크 키트는 여러 줄의 쇼핑몰 장바구니 항목과 가격을 받아 총액, 예산 차이, CPU/GPU/RAM/SSD/파워/케이스 누락, 위험 조건을 계산하고 옵션/사양 검수와 구매 승인 브리프로 넘길 prefill을 반환합니다.
+
+```bash
+curl -X POST http://127.0.0.1:8000/public/shopping-cart-intake-kit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "category": "desktop_pc",
+    "cart_text": "Ryzen 7 7800X3D 430,000원\nRTX 4070 SUPER 910,000원\nDDR5 RAM 32GB 145,000원\nNVMe SSD 1TB 110,000원\nB650 메인보드 210,000원\n750W 파워 120,000원\nATX 케이스 95,000원",
+    "budget_krw": 2200000,
+    "purpose": "qhd_creator"
+  }'
+```
+
 공개 구매 승인 브리프 키트는 장바구니 검수 결과를 가족, 팀, 커뮤니티에 공유할 수 있는 승인 질문, 찬성/반대 투표 옵션, 채널별 복사 문구로 압축합니다.
 
 ```bash
@@ -1564,6 +1577,7 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 - `/public/mistake-cost-calculator`, `/public/mistake-cost-calculator/result`: 공개 구매 실패 비용 계산 질문과 예산/수량/긴급도별 예상 손실, 방지 플랜, 분석 prefill, 공유 문구 조회
 - `/public/buyer-challenge-kit`: 구매 성향, 실패 비용, 체크리스트를 3단계 공유 챌린지와 카카오톡/커뮤니티/팀 채널별 복사 문구로 패키징
 - `/public/setup-compatibility-kit`: 공개 CPU/GPU/RAM/SSD/모니터/파워/폼팩터 또는 노트북 휴대성 조합을 목적 기준으로 점검하고 분석/검수 prefill 조회
+- `/public/shopping-cart-intake-kit`: 공개 쇼핑몰 장바구니 텍스트/항목을 총액, 예산 차이, 필수 슬롯 누락, 위험 조건, 옵션/사양 검수 prefill, 구매 승인 prefill로 변환
 - `/public/listing-decoder-kit`: 공개 쇼핑몰 상품명/옵션명에서 핵심 사양과 구매 조건 위험어를 구조화하고 검수 prefill, 판매자 질문, 공유 문구 조회
 - `/public/spec-risk-scanner`, `/public/spec-risk-scanner/result`: 공개 옵션/사양 빠른 검수 메타와 결제 전 예산 초과, CPU/GPU/RAM/SSD/OS 불일치, 배송/반품/AS 증거 누락 판정, 구매 세이프티 브리프, 판매자 질문, 승인 요약, 캡처 체크리스트 조회
 - `/public/purchase-approval-brief-kit`: 공개 장바구니 검수 결과를 가족/팀/커뮤니티용 승인 질문, 찬성/반대 투표 옵션, 채널별 복사 문구, 분석 prefill로 변환
