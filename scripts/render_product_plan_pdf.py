@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -21,7 +22,12 @@ from reportlab.platypus import (
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "docs" / "specpilot_ai_product_plan.md"
-OUTPUT = Path("/Users/kimyanghoon/output/pdf/shopping_purchase_decision_agent_plan.pdf")
+OUTPUT = Path(
+    os.environ.get(
+        "PRODUCT_PLAN_PDF_OUTPUT",
+        "/Users/kimyanghoon/output/pdf/shopping_purchase_decision_agent_plan.pdf",
+    )
+)
 
 
 def register_fonts() -> tuple[str, str]:

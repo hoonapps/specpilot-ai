@@ -31,6 +31,19 @@ jobs:
       - name: Pytest
         run: pytest -q
 
+      - name: Render product plan PDF
+        env:
+          PRODUCT_PLAN_PDF_OUTPUT: ${{ runner.temp }}/shopping_purchase_decision_agent_plan.pdf
+        run: |
+          python scripts/render_product_plan_pdf.py
+          test -s "$PRODUCT_PLAN_PDF_OUTPUT"
+
+      - name: Upload product plan PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: shopping-purchase-decision-agent-plan
+          path: ${{ runner.temp }}/shopping_purchase_decision_agent_plan.pdf
+
   docker:
     name: Docker build
     runs-on: ubuntu-latest

@@ -1450,6 +1450,7 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 - `/ops/public-launch-preflight`: 공개 런칭 스모크, 출시 게이트, 첫 24시간 워룸, 인시던트 센터, 측정 이벤트, 공유 미리보기, rollback 기준을 최종 체크로 합산해 go/제한 배포/보류/차단 결정과 런칭 브리프를 반환
 - `/public/launch-room`: 데모 갤러리, 공개 시장 리포트, proof strip, 유입 허브, 런칭 반박 FAQ, 공유 확산팩, 액션 라우터, 런치 Pulse, 추천 대기열, 요금제 관심을 외부 공유용 런칭룸 카드로 집계
 - Next.js `check:launch-visual`: 공개 `/launch`를 데스크톱/모바일 Chrome headless로 열어 hero 제목, CTA, proof pill, 가로 overflow를 검사하고 캡처를 남겨 커뮤니티 공유 전 화면 깨짐을 차단
+- GitHub Actions 출시 품질 게이트: 제품 API는 Ruff, pytest, 제품 계획 PDF 렌더, Docker build를 통과해야 하고 웹사이트는 TypeScript/build, production `/launch` 시각 스모크, Docker build를 통과해야 main에 안전하게 반영
 - `/ops/team-purchase-consult-kit`: Team 요금제 관심 리드를 상담 브리프, 확인 입력, ROI 포인트, 롤아웃 단계, 제안 메일 초안으로 집계
 - `/ops/data-governance`: 워크스페이스별 테이블 인벤토리, 원문 연락처 표면, 마스킹 표면, 보존 초과 액션을 집계
 - `share_token`, `shared_at`, `share_views`: 저장 리포트 공개 공유 상태
