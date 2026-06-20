@@ -603,6 +603,59 @@ def test_public_spec_risk_scanner_checks_checkout_options_before_purchase() -> N
     assert hold_payload["next_actions"]
 
 
+def test_public_checkout_nudge_kit_turns_cart_check_into_followup_plan() -> None:
+    hold = client.post(
+        "/public/checkout-nudge-kit",
+        json={
+            "category": "desktop_pc",
+            "product_title": "Creator RTX 4070 SUPER Build",
+            "verdict": "hold",
+            "budget_krw": 2_200_000,
+            "cart_total_krw": 2_340_000,
+            "blocker_count": 4,
+            "warning_count": 2,
+            "missing_evidence": ["배송 예정일", "AS 조건"],
+            "source": "pytest",
+        },
+    )
+
+    assert hold.status_code == 200
+    hold_payload = hold.json()
+    assert hold_payload["kit_version"] == "specpilot.public_checkout_nudge_kit.v1"
+    assert hold_payload["priority"] == "blocker"
+    assert "결제 전 확인 답변" in hold_payload["headline"]
+    assert "판매자" in hold_payload["next_best_action"]
+    assert "SpecPilot AI 장바구니 후속 알림" in hold_payload["reminder_copy"]
+    assert "대체 후보" in " ".join(hold_payload["proof_points"])
+    assert {step["step_id"] for step in hold_payload["nudges"]} == {
+        "seller_answer",
+        "price_recheck",
+        "outcome_capture",
+    }
+
+    ready = client.post(
+        "/public/checkout-nudge-kit",
+        json={
+            "category": "laptop",
+            "product_title": "Creator Laptop 14",
+            "verdict": "ready",
+            "budget_krw": 2_200_000,
+            "cart_total_krw": 2_080_000,
+            "blocker_count": 0,
+            "warning_count": 0,
+            "missing_evidence": [],
+            "source": "pytest",
+        },
+    )
+
+    assert ready.status_code == 200
+    ready_payload = ready.json()
+    assert ready_payload["priority"] == "ok"
+    assert ready_payload["nudges"][0]["step_id"] == "capture_now"
+    assert "구매 결과 회수" in ready_payload["summary"]
+    assert "노트북" in ready_payload["analysis_prefill"]
+
+
 def test_public_candidate_compare_exposes_top_candidates_and_scenarios() -> None:
     response = client.get(
         "/public/candidate-compare"

@@ -1563,6 +1563,48 @@ class SpecRiskScannerResult(BaseModel):
     next_actions: list[str] = Field(default_factory=list)
 
 
+class CheckoutNudgeRequest(BaseModel):
+    category: Category = Category.desktop_pc
+    product_title: str = "구매 후보"
+    verdict: str = "verify"
+    budget_krw: int = Field(default=2_200_000, ge=300_000, le=30_000_000)
+    cart_total_krw: int | None = Field(default=None, ge=0, le=30_000_000)
+    blocker_count: int = Field(default=0, ge=0, le=20)
+    warning_count: int = Field(default=0, ge=0, le=20)
+    missing_evidence: list[str] = Field(default_factory=list)
+    source: str = "web"
+
+
+class CheckoutNudgeStep(BaseModel):
+    step_id: str
+    label: str
+    timing: str
+    trigger: str
+    message: str
+    cta_label: str
+    cta_path: str
+    event_name: str
+
+
+class PublicCheckoutNudgeKit(BaseModel):
+    kit_version: str = "specpilot.public_checkout_nudge_kit.v1"
+    generated_at: str
+    category: Category
+    product_title: str
+    verdict: str
+    priority: CheckStatus
+    headline: str
+    summary: str
+    next_best_action: str
+    reminder_copy: str
+    analysis_prefill: str
+    waitlist_prefill: str
+    nudges: list[CheckoutNudgeStep] = Field(default_factory=list)
+    proof_points: list[str] = Field(default_factory=list)
+    primary_cta_label: str = "후속 플랜으로 분석 시작"
+    primary_cta_path: str = "#analysis"
+
+
 class CandidateCompareItem(BaseModel):
     product_id: str
     model_name: str

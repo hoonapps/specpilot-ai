@@ -36,6 +36,7 @@ from specpilot_ai.core.models import (
     BuyerPersonaQuizResult,
     Category,
     CategoryMarketReport,
+    CheckoutNudgeRequest,
     CheckoutReview,
     CheckoutReviewRequest,
     CheckStatus,
@@ -99,6 +100,7 @@ from specpilot_ai.core.models import (
     PublicBuyerPersonaQuiz,
     PublicCandidateCompare,
     PublicCategoryMarketReport,
+    PublicCheckoutNudgeKit,
     PublicConversionBoard,
     PublicDealTimingWindow,
     PublicLaunchActionRouter,
@@ -194,6 +196,7 @@ from specpilot_ai.services.mistake_cost import (
 )
 from specpilot_ai.services.onboarding import purchase_onboarding_playbooks
 from specpilot_ai.services.spec_risk_scanner import (
+    build_checkout_nudge_kit,
     build_public_spec_risk_scanner,
     scan_spec_risk,
 )
@@ -1198,6 +1201,16 @@ def public_spec_risk_scanner_result(
     request: SpecRiskScannerRequest,
 ) -> SpecRiskScannerResult:
     return scan_spec_risk(request)
+
+
+@app.post(
+    "/public/checkout-nudge-kit",
+    response_model=PublicCheckoutNudgeKit,
+)
+def public_checkout_nudge_kit(
+    request: CheckoutNudgeRequest,
+) -> PublicCheckoutNudgeKit:
+    return build_checkout_nudge_kit(request)
 
 
 @app.get("/public/candidate-compare", response_model=PublicCandidateCompare)

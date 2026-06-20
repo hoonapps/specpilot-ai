@@ -3,7 +3,10 @@ from datetime import UTC, datetime
 
 from specpilot_ai.core.models import (
     Category,
+    CheckoutNudgeRequest,
+    CheckoutNudgeStep,
     CheckStatus,
+    PublicCheckoutNudgeKit,
     PublicSpecRiskScanner,
     SpecRiskCheck,
     SpecRiskScannerRequest,
@@ -128,6 +131,32 @@ def scan_spec_risk(
         capture_checklist=_capture_checklist(verdict, missing_evidence),
         checkout_next_step=_checkout_next_step(verdict, missing_evidence),
         next_actions=_next_actions(verdict, missing_evidence),
+    )
+
+
+def build_checkout_nudge_kit(
+    request: CheckoutNudgeRequest,
+    generated_at: datetime | None = None,
+) -> PublicCheckoutNudgeKit:
+    generated_at = generated_at or datetime.now(UTC)
+    title = request.product_title.strip() or _category_label(request.category)
+    verdict = request.verdict if request.verdict in {"ready", "verify", "hold"} else "verify"
+    priority = _nudge_priority(verdict, request.blocker_count, request.warning_count)
+    next_best_action = _nudge_next_best_action(verdict, request.missing_evidence)
+    return PublicCheckoutNudgeKit(
+        generated_at=generated_at.isoformat(),
+        category=request.category,
+        product_title=title,
+        verdict=verdict,
+        priority=priority,
+        headline=_nudge_headline(verdict, title),
+        summary=_nudge_summary(request, verdict),
+        next_best_action=next_best_action,
+        reminder_copy=_nudge_reminder_copy(request, verdict, next_best_action),
+        analysis_prefill=_nudge_analysis_prefill(request, verdict),
+        waitlist_prefill=_nudge_waitlist_prefill(request, next_best_action),
+        nudges=_nudge_steps(request, verdict),
+        proof_points=_nudge_proof_points(request, verdict),
     )
 
 
@@ -472,3 +501,166 @@ def _checkout_next_step(verdict: str, missing_evidence: list[str]) -> str:
 
 def _category_label(category: Category) -> str:
     return "노트북" if category == Category.laptop else "데스크톱 PC"
+
+
+def _nudge_priority(
+    verdict: str,
+    blocker_count: int,
+    warning_count: int,
+) -> CheckStatus:
+    if verdict == "hold" or blocker_count:
+        return CheckStatus.blocker
+    if verdict == "verify" or warning_count:
+        return CheckStatus.warning
+    return CheckStatus.ok
+
+
+def _nudge_headline(verdict: str, title: str) -> str:
+    if verdict == "hold":
+        return f"{title}은 결제 전 확인 답변을 받아야 합니다."
+    if verdict == "verify":
+        return f"{title}은 24시간 안에 한 번 더 확인하세요."
+    return f"{title}은 구매 결과 회수까지 연결할 수 있습니다."
+
+
+def _nudge_summary(request: CheckoutNudgeRequest, verdict: str) -> str:
+    total = (
+        f"{request.cart_total_krw:,}원"
+        if request.cart_total_krw is not None
+        else "최종가 미입력"
+    )
+    if verdict == "hold":
+        return (
+            f"최종가 {total}, blocker {request.blocker_count}개입니다. "
+            "판매자 답변, 대체 후보 비교, 승인 공유 중 하나가 끝나기 전에는 결제를 미룹니다."
+        )
+    if verdict == "verify":
+        return (
+            f"최종가 {total}, warning {request.warning_count}개입니다. "
+            "오늘 캡처, 내일 가격 재확인, 결제 후 결과 회수까지 이어지게 만듭니다."
+        )
+    return (
+        f"최종가 {total} 기준 핵심 검수를 통과했습니다. "
+        "결제 화면 캡처와 구매 결과 회수를 예약하면 추천 품질 학습까지 닫힙니다."
+    )
+
+
+def _nudge_next_best_action(verdict: str, missing_evidence: list[str]) -> str:
+    if verdict == "hold":
+        return "판매자에게 옵션/최종가 확인 질문을 보내고 답변 전까지 결제를 보류하세요."
+    if missing_evidence:
+        return f"누락 증거를 먼저 캡처하세요: {', '.join(missing_evidence[:2])}."
+    if verdict == "verify":
+        return "24시간 뒤 같은 장바구니 최종가와 옵션명을 다시 확인하세요."
+    return "결제 화면 캡처를 저장하고 구매 결과를 남길 시간을 예약하세요."
+
+
+def _nudge_reminder_copy(
+    request: CheckoutNudgeRequest,
+    verdict: str,
+    next_best_action: str,
+) -> str:
+    label = {"ready": "결제 가능", "verify": "확인 후 결제", "hold": "결제 보류"}[verdict]
+    total = (
+        f"{request.cart_total_krw:,}원"
+        if request.cart_total_krw is not None
+        else "최종가 미입력"
+    )
+    return (
+        "SpecPilot AI 장바구니 후속 알림\n"
+        f"- 상품: {request.product_title}\n"
+        f"- 판정: {label}\n"
+        f"- 최종가: {total}\n"
+        f"- 다음 행동: {next_best_action}\n"
+        "결제 전 옵션명, 최종가, 배송/반품/AS 증거를 다시 확인합니다."
+    )
+
+
+def _nudge_analysis_prefill(request: CheckoutNudgeRequest, verdict: str) -> str:
+    total = (
+        f"{request.cart_total_krw:,}원"
+        if request.cart_total_krw is not None
+        else "최종가 미입력"
+    )
+    return (
+        f"{_category_label(request.category)} '{request.product_title}' 장바구니를 "
+        f"{verdict} 판정 이후 다시 검토해줘. 예산 {request.budget_krw:,}원, "
+        f"현재 최종가 {total}, blocker {request.blocker_count}개, "
+        f"warning {request.warning_count}개야."
+    )
+
+
+def _nudge_waitlist_prefill(
+    request: CheckoutNudgeRequest,
+    next_best_action: str,
+) -> str:
+    return (
+        f"{request.product_title} 구매를 놓치지 않도록 후속 알림을 받고 싶습니다. "
+        f"다음 행동: {next_best_action}"
+    )
+
+
+def _nudge_steps(
+    request: CheckoutNudgeRequest,
+    verdict: str,
+) -> list[CheckoutNudgeStep]:
+    first = (
+        CheckoutNudgeStep(
+            step_id="seller_answer",
+            label="판매자 답변 확인",
+            timing="1시간 안",
+            trigger="옵션명·최종가·AS 중 하나라도 blocker",
+            message="판매자 답변을 받기 전에는 결제하지 말고 답변 문구를 캡처하세요.",
+            cta_label="질문 복사",
+            cta_path="#spec-scanner",
+            event_name="checkout_nudge_seller_answer",
+        )
+        if verdict == "hold"
+        else CheckoutNudgeStep(
+            step_id="capture_now",
+            label="결제 화면 캡처",
+            timing="지금",
+            trigger="결제 가능 또는 warning만 남은 장바구니",
+            message="최종 결제 금액, 옵션명, 배송/반품/AS 조건을 한 번에 캡처하세요.",
+            cta_label="캡처 체크",
+            cta_path="#spec-scanner",
+            event_name="checkout_nudge_capture_now",
+        )
+    )
+    return [
+        first,
+        CheckoutNudgeStep(
+            step_id="price_recheck",
+            label="가격 재확인",
+            timing="24시간 뒤",
+            trigger="쿠폰·카드 할인·재고 변동 가능성",
+            message="같은 옵션으로 최종가가 바뀌었는지 확인하고, 오르면 대체 후보 분석으로 이동하세요.",
+            cta_label="가격 타이밍 보기",
+            cta_path="#deal-timing",
+            event_name="checkout_nudge_price_recheck",
+        ),
+        CheckoutNudgeStep(
+            step_id="outcome_capture",
+            label="구매 결과 회수",
+            timing="구매 후 3일",
+            trigger="결제 완료 또는 구매 보류 결정",
+            message="실제 구매/지연/이탈 결과와 최종 결제 금액을 남겨 다음 추천 품질에 반영하세요.",
+            cta_label="구매 결과 남기기",
+            cta_path="/#outcomes",
+            event_name="checkout_nudge_outcome_capture",
+        ),
+    ]
+
+
+def _nudge_proof_points(
+    request: CheckoutNudgeRequest,
+    verdict: str,
+) -> list[str]:
+    points = [
+        f"blocker {request.blocker_count}개 / warning {request.warning_count}개 기준",
+        "결제 전 캡처와 판매자 답변을 후속 행동으로 분리",
+        "24시간 가격 재확인과 구매 결과 회수까지 연결",
+    ]
+    if verdict == "hold":
+        points.append("보류 장바구니는 대체 후보 비교로 이탈을 줄임")
+    return points
