@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     default_workspace_id: str = "demo"
     default_api_key: str = "specpilot-demo-key"
     completion_webhook_secret: str = "specpilot-webhook-secret"
+    public_site_url: str = ""
     openai_api_key: str | None = None
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_username: str = "neo4j"

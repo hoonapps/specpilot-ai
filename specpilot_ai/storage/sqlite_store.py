@@ -259,6 +259,7 @@ DATA_INVENTORY_SPECS = [
 class SpecPilotStore:
     def __init__(self, settings: Settings) -> None:
         self.db_path = Path(settings.storage_path)
+        self.public_site_url = settings.public_site_url.strip().rstrip("/")
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._ensure_schema()
 
@@ -3356,7 +3357,7 @@ class SpecPilotStore:
             use_case=request.use_case,
             referral_code=referral_code,
             referred_by_code=request.referred_by_code.strip().upper(),
-            referral_url=f"/join?ref={referral_code}",
+            referral_url=self._referral_url(referral_code),
             referred_signup_count=0,
             priority_score=_waitlist_priority_score(0, request.contact_consent),
             contact_consent=request.contact_consent,
@@ -3388,6 +3389,12 @@ class SpecPilotStore:
                 ),
             )
         return referral
+
+    def _referral_url(self, referral_code: str) -> str:
+        path = f"/join?ref={referral_code}"
+        if not self.public_site_url:
+            return path
+        return f"{self.public_site_url}{path}"
 
     def list_waitlist_referrals_for_workspace(
         self,

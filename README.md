@@ -125,6 +125,12 @@ API 문서:
 http://127.0.0.1:8000/docs
 ```
 
+공개 웹사이트와 연결할 때는 추천 대기열 공유 URL이 바로 외부에 보낼 수 있는 절대 URL이 되도록 설정합니다.
+
+```bash
+PUBLIC_SITE_URL=https://specpilot-ai-site.vercel.app
+```
+
 ### Docker Compose
 
 ```bash
@@ -888,6 +894,8 @@ curl http://127.0.0.1:8000/growth/retention-hub \
 
 추천 대기열과 리더보드:
 
+`PUBLIC_SITE_URL`이 설정되어 있으면 `referral_url`은 `https://.../join?ref=...` 형태의 절대 초대 링크로 반환됩니다. 설정하지 않으면 로컬 개발용 상대 경로 `/join?ref=...`를 유지합니다.
+
 ```bash
 curl -X POST http://127.0.0.1:8000/growth/waitlist-referrals \
   -H "Content-Type: application/json" \
@@ -1208,7 +1216,7 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 - `/growth/events`, `/growth/funnel`: 추천 카드, 대안 시나리오, 공유 리포트, 가격 알림, 요금제 CTA 반응을 저장하고 단계별 전환율과 다음 액션을 집계
 - `/growth/acquisition-hub`: 공개 데모, SEO 카테고리 리포트, 공유 리포트, 추천 대기열, Trust Center, 요금제 관심 표면의 준비도와 채널별 액션을 집계
 - `/growth/retention-hub`: 저장 리포트, 가격 알림, 공개 조회, 구매 상담, 구매 결과, 완료 리포트 engagement를 재참여 신호, 플레이, 다음 액션으로 집계
-- `/growth/waitlist-referrals`, `/growth/referral-dashboard`: 추천 대기열 가입, 추천 코드/공유 URL, 추천 유입 수, 우선순위 점수, 리더보드를 워크스페이스별로 집계
+- `/growth/waitlist-referrals`, `/growth/referral-dashboard`: 추천 대기열 가입, 추천 코드/공유 URL, `PUBLIC_SITE_URL` 기반 절대 초대 링크, 추천 유입 수, 우선순위 점수, 리더보드를 워크스페이스별로 집계
 - `/growth/launch-pulse`: 성장 이벤트, 피드백, 추천 대기열, 요금제 관심, readiness를 합성해 공개 반응 Pulse 점수와 다음 액션을 반환
 - `/growth/launch-experiments`, `/growth/launch-experiments/{experiment_id}/events`, `/growth/launch-experiment-dashboard`: 공개 CTA variant, 노출/전환 이벤트, 승자 후보, 다음 실험 액션을 관리
 - `/growth/launch-kit`: 공개 베타 채널별 카피, CTA 실험, 출시 체크리스트, 위험 고지, 측정 계획을 반환

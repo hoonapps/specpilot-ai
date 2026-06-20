@@ -3,6 +3,9 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from specpilot_ai.api.main import app
+from specpilot_ai.core.config import Settings
+from specpilot_ai.core.models import WaitlistReferralRequest
+from specpilot_ai.storage.sqlite_store import SpecPilotStore
 
 client = TestClient(app)
 WORKSPACE_A = {"X-SpecPilot-Key": "pytest-workspace-a"}
@@ -462,6 +465,39 @@ def test_waitlist_referrals_create_share_loop_and_dashboard() -> None:
     isolated = client.get("/growth/referral-dashboard", headers=other_workspace)
     assert isolated.status_code == 200
     assert isolated.json()["total_referrals"] == 0
+
+
+def test_waitlist_referral_url_uses_public_site_url_when_configured(tmp_path) -> None:
+    relative_store = SpecPilotStore(
+        Settings(storage_path=str(tmp_path / "relative.sqlite3")),
+    )
+    relative = relative_store.create_waitlist_referral_for_workspace(
+        "pytest-url-relative",
+        WaitlistReferralRequest(
+            email="relative@example.com",
+            persona="creator",
+            source="pytest-referral-url",
+        ),
+    )
+    assert relative.referral_url == f"/join?ref={relative.referral_code}"
+
+    absolute_store = SpecPilotStore(
+        Settings(
+            storage_path=str(tmp_path / "absolute.sqlite3"),
+            public_site_url="https://specpilot.example.com/",
+        ),
+    )
+    absolute = absolute_store.create_waitlist_referral_for_workspace(
+        "pytest-url-absolute",
+        WaitlistReferralRequest(
+            email="absolute@example.com",
+            persona="team_purchase",
+            source="pytest-referral-url",
+        ),
+    )
+    assert absolute.referral_url == (
+        f"https://specpilot.example.com/join?ref={absolute.referral_code}"
+    )
 
 
 def test_trust_policy_endpoint_exposes_cache_and_fairness_rules() -> None:
