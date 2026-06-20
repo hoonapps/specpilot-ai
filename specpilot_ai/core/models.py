@@ -2037,6 +2037,37 @@ class LaunchMediaKit(BaseModel):
     next_actions: list[str] = Field(default_factory=list)
 
 
+class LaunchActivationOffer(BaseModel):
+    key: str
+    label: str
+    audience: str
+    trigger: str
+    cta_label: str
+    cta_path: str
+    value_prop: str
+    proof: str
+    friction: str
+    tracking_event: str
+    priority_score: float = Field(ge=0, le=100)
+
+
+class LaunchActivationOfferDashboard(BaseModel):
+    offer_version: str = "specpilot.launch_activation_offer.v1"
+    workspace_id: str
+    generated_at: str
+    status: CheckStatus
+    activation_score: float = Field(ge=0, le=100)
+    headline: str
+    summary: str
+    metric_cards: dict[str, int | float | str] = Field(default_factory=dict)
+    primary_offer: LaunchActivationOffer
+    offers: list[LaunchActivationOffer] = Field(default_factory=list)
+    handoff_prompts: list[str] = Field(default_factory=list)
+    proof_points: list[str] = Field(default_factory=list)
+    tracking_events: list[str] = Field(default_factory=list)
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class PublicAcquisitionSurface(BaseModel):
     key: str
     label: str

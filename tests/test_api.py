@@ -2100,6 +2100,75 @@ def test_growth_launch_media_kit_packages_external_launch_assets() -> None:
     assert payload["next_actions"]
 
 
+def test_growth_launch_activation_offer_prioritizes_public_ctas() -> None:
+    workspace = {"X-SpecPilot-Key": f"pytest-activation-offer-{uuid4().hex}"}
+    for event_type in ["analysis_view", "share_cta", "subscription_cta"]:
+        response = client.post(
+            "/growth/events",
+            headers=workspace,
+            json={
+                "event_type": event_type,
+                "source": "pytest-activation-offer",
+                "surface": "launch",
+                "label": f"전환 오퍼 {event_type}",
+            },
+        )
+        assert response.status_code == 200
+    referral = client.post(
+        "/growth/waitlist-referrals",
+        headers=workspace,
+        json={
+            "email": "activation-offer@example.com",
+            "persona": "team_purchase",
+            "use_case": "팀 노트북 구매 기준을 같이 검토하고 싶습니다.",
+            "contact_consent": True,
+            "source": "pytest-activation-offer",
+        },
+    )
+    assert referral.status_code == 200
+    pricing = client.post(
+        "/billing/subscription-intents",
+        headers=workspace,
+        json={
+            "email": "activation-offer@example.com",
+            "plan_id": "team",
+            "billing_cycle": "monthly",
+            "persona": "team_purchase_owner",
+            "use_case": "회사 장비 구매 표준안을 만들고 싶습니다.",
+            "team_size": 12,
+            "max_budget_krw": 18000000,
+            "feature_priorities": ["team_consult", "checkout_review"],
+            "purchase_timing": "within_30_days",
+            "contact_consent": True,
+            "source": "pytest-activation-offer",
+        },
+    )
+    assert pricing.status_code == 200
+
+    response = client.get("/growth/launch-activation-offer?limit=8", headers=workspace)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["offer_version"] == "specpilot.launch_activation_offer.v1"
+    assert payload["workspace_id"].startswith("workspace_")
+    assert payload["status"] in {"ok", "warning", "blocker"}
+    assert payload["activation_score"] > 0
+    assert payload["primary_offer"]["key"] in {offer["key"] for offer in payload["offers"]}
+    offer_keys = {offer["key"] for offer in payload["offers"]}
+    assert {
+        "quick_purchase_analysis",
+        "waitlist_referral_pass",
+        "premium_trial_signal",
+        "team_purchase_consult",
+        "community_reply_to_analysis",
+    } <= offer_keys
+    assert all(offer["cta_path"].startswith("/") for offer in payload["offers"])
+    assert payload["handoff_prompts"]
+    assert payload["proof_points"]
+    assert "launch_activation_primary_click" in payload["tracking_events"]
+    assert payload["metric_cards"]["pricing_intents"] >= 1
+    assert payload["next_actions"]
+
+
 def test_public_launch_room_packages_demo_proof_and_growth_ctas() -> None:
     workspace = {"X-SpecPilot-Key": f"pytest-launch-room-{uuid4().hex}"}
     referral = client.post(

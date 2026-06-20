@@ -64,6 +64,7 @@ from specpilot_ai.core.models import (
     IntegrationProviderRequest,
     IntegrationReadinessDashboard,
     LaunchCampaignKit,
+    LaunchActivationOfferDashboard,
     LaunchCommunityKit,
     LaunchDistributionPlan,
     LaunchExperiment,
@@ -1855,6 +1856,17 @@ def growth_launch_media_kit(
     workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
 ) -> LaunchMediaKit:
     return _store().launch_media_kit_for_workspace(
+        workspace.workspace_id,
+        limit=limit,
+    )
+
+
+@app.get("/growth/launch-activation-offer", response_model=LaunchActivationOfferDashboard)
+def growth_launch_activation_offer(
+    limit: int = 12,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> LaunchActivationOfferDashboard:
+    return _store().launch_activation_offer_for_workspace(
         workspace.workspace_id,
         limit=limit,
     )

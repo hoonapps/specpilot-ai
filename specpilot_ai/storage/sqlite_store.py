@@ -73,6 +73,8 @@ from specpilot_ai.core.models import (
     LaunchCommunityKit,
     LaunchCommunityReplyTemplate,
     LaunchCommunityRisk,
+    LaunchActivationOffer,
+    LaunchActivationOfferDashboard,
     LaunchMediaAsset,
     LaunchMediaKit,
     LaunchMediaPitch,
@@ -3640,6 +3642,99 @@ class SpecPilotStore:
                 "launch_community_reply_copy",
             ],
             next_actions=_launch_media_next_actions(status, assets, pitches, community),
+        )
+
+    def launch_activation_offer_for_workspace(
+        self,
+        workspace_id: str,
+        limit: int = 12,
+    ) -> LaunchActivationOfferDashboard:
+        metrics = self.metrics_for_workspace(workspace_id)
+        conversion = self.public_conversion_board_for_workspace(
+            workspace_id,
+            limit=limit,
+        )
+        referrals = self.waitlist_referral_dashboard_for_workspace(
+            workspace_id,
+            limit=limit,
+        )
+        pricing = self.pricing_dashboard_for_workspace(workspace_id)
+        team_consult = self.team_purchase_consult_kit_for_workspace(
+            workspace_id,
+            limit=limit,
+        )
+        media = self.launch_media_kit_for_workspace(workspace_id, limit=limit)
+        community = self.launch_community_kit_for_workspace(workspace_id, limit=limit)
+        router = self.public_launch_action_router_for_workspace(workspace_id)
+        activation_score = _launch_activation_score(
+            conversion=conversion,
+            referrals=referrals,
+            pricing=pricing,
+            team_consult=team_consult,
+            media=media,
+            community=community,
+            router=router,
+            metrics=metrics,
+        )
+        status = _launch_activation_status(
+            activation_score=activation_score,
+            conversion=conversion,
+            pricing=pricing,
+            media=media,
+        )
+        offers = _launch_activation_offers(
+            conversion=conversion,
+            referrals=referrals,
+            pricing=pricing,
+            team_consult=team_consult,
+            media=media,
+            community=community,
+            router=router,
+            activation_score=activation_score,
+        )
+        primary_offer = offers[0]
+        return LaunchActivationOfferDashboard(
+            workspace_id=workspace_id,
+            generated_at=_now(),
+            status=status,
+            activation_score=activation_score,
+            headline=_launch_activation_headline(status, activation_score, primary_offer),
+            summary=_launch_activation_summary(conversion, pricing, referrals, media, offers),
+            metric_cards={
+                "activation_score": activation_score,
+                "conversion_score": conversion.conversion_score,
+                "media_score": media.media_score,
+                "response_score": community.response_score,
+                "routing_score": router.routing_score,
+                "waitlist_referrals": referrals.total_referrals,
+                "referred_signups": referrals.referred_signup_count,
+                "pricing_intents": pricing.intent_count,
+                "team_intents": pricing.team_intent_count,
+                "share_cta_clicks": metrics.share_cta_clicks,
+            },
+            primary_offer=primary_offer,
+            offers=offers,
+            handoff_prompts=_launch_activation_handoff_prompts(primary_offer, offers),
+            proof_points=_launch_activation_proof_points(
+                conversion,
+                media,
+                community,
+                team_consult,
+            ),
+            tracking_events=[
+                "launch_activation_offer_click",
+                "launch_activation_primary_click",
+                "launch_action_route_click",
+                "subscription_cta",
+                "referral_waitlist",
+            ],
+            next_actions=_launch_activation_next_actions(
+                status,
+                offers,
+                conversion,
+                referrals,
+                pricing,
+            ),
         )
 
     def retention_hub_for_workspace(
@@ -13909,6 +14004,250 @@ def _launch_media_next_actions(
         actions.insert(0, "대표 이미지, 런칭룸 링크, 채널별 피치를 먼저 채우세요.")
     actions.extend(community.next_actions[:2])
     return list(dict.fromkeys(actions))[:7]
+
+
+def _launch_activation_score(
+    *,
+    conversion: PublicConversionBoard,
+    referrals: WaitlistReferralDashboard,
+    pricing: PricingDashboard,
+    team_consult: TeamPurchaseConsultKit,
+    media: LaunchMediaKit,
+    community: LaunchCommunityKit,
+    router: PublicLaunchActionRouter,
+    metrics: OperationsMetrics,
+) -> float:
+    demand_signal = min(
+        100.0,
+        referrals.total_referrals * 9
+        + referrals.referred_signup_count * 14
+        + pricing.intent_count * 12
+        + pricing.team_intent_count * 16
+        + metrics.share_cta_clicks * 9
+        + metrics.analysis_runs * 6,
+    )
+    team_signal = min(100.0, team_consult.team_intent_count * 18 + team_consult.estimated_team_mrr_krw / 6000)
+    return round(
+        conversion.conversion_score * 0.22
+        + media.media_score * 0.16
+        + community.response_score * 0.12
+        + router.routing_score * 0.14
+        + _status_score(pricing.readiness_status) * 0.1
+        + _status_score(team_consult.status) * 0.08
+        + demand_signal * 0.13
+        + team_signal * 0.05,
+        1,
+    )
+
+
+def _launch_activation_status(
+    *,
+    activation_score: float,
+    conversion: PublicConversionBoard,
+    pricing: PricingDashboard,
+    media: LaunchMediaKit,
+) -> CheckStatus:
+    if (
+        activation_score < 42
+        or conversion.status == CheckStatus.blocker
+        or media.status == CheckStatus.blocker
+    ):
+        return CheckStatus.blocker
+    if (
+        activation_score < 74
+        or conversion.status == CheckStatus.warning
+        or pricing.readiness_status == CheckStatus.warning
+        or media.status == CheckStatus.warning
+    ):
+        return CheckStatus.warning
+    return CheckStatus.ok
+
+
+def _launch_activation_offers(
+    *,
+    conversion: PublicConversionBoard,
+    referrals: WaitlistReferralDashboard,
+    pricing: PricingDashboard,
+    team_consult: TeamPurchaseConsultKit,
+    media: LaunchMediaKit,
+    community: LaunchCommunityKit,
+    router: PublicLaunchActionRouter,
+    activation_score: float,
+) -> list[LaunchActivationOffer]:
+    route = router.routes[0] if router.routes else None
+    offers = [
+        _launch_activation_offer(
+            key="quick_purchase_analysis",
+            label="30초 구매 조건 분석",
+            audience="컴퓨터와 노트북을 곧 살 개인 구매자",
+            trigger="런칭 글이나 커뮤니티 답변을 보고 바로 내 조건을 넣고 싶을 때",
+            cta_label="구매 조건 분석 시작",
+            cta_path="/#start-concierge",
+            value_prop="예산, 용도, 후보를 넣으면 적합도, 제외 이유, 가격 대기 여부를 한 번에 봅니다.",
+            proof=media.hero_statement,
+            friction="회원가입 전에 최소 입력만 받고 리포트 저장은 결과 화면에서 요청하세요.",
+            tracking_event="launch_activation_quick_analysis",
+            priority_score=min(100.0, activation_score + 8),
+        ),
+        _launch_activation_offer(
+            key="waitlist_referral_pass",
+            label="추천 대기열 패스",
+            audience="친구나 팀 동료에게 같이 검토받고 싶은 방문자",
+            trigger="분석 전에 제품을 저장하거나 공유 링크를 받고 싶을 때",
+            cta_label="추천 대기열 참여",
+            cta_path="/join",
+            value_prop="추천 코드와 공유 URL을 받아 첫 주 피드백 루프에 들어갑니다.",
+            proof=referrals.summary,
+            friction="이메일과 동의 여부만 받고 추천 URL을 즉시 보여주세요.",
+            tracking_event="launch_activation_referral_pass",
+            priority_score=min(100.0, 54 + referrals.total_referrals * 8 + referrals.share_rate_hint * 18),
+        ),
+        _launch_activation_offer(
+            key="premium_trial_signal",
+            label="Premium 체험 의향",
+            audience="구매 타이밍, 가격 알림, 결제 전 검수까지 원하는 사용자",
+            trigger="무료 분석 후 계속 추적할 명확한 이유가 있을 때",
+            cta_label="Premium 관심 등록",
+            cta_path="/launch#launch-conversion",
+            value_prop="저장 리포트, 가격 알림, 결제 전 검수, 후속 질문 루프를 묶어 구매 실패를 줄입니다.",
+            proof=pricing.summary,
+            friction="결제 요구가 아니라 관심 등록으로 시작하고 기대 예산을 선택하게 하세요.",
+            tracking_event="launch_activation_premium_trial",
+            priority_score=min(100.0, 48 + pricing.premium_intent_count * 14 + pricing.intent_count * 7),
+        ),
+        _launch_activation_offer(
+            key="team_purchase_consult",
+            label="팀 장비 구매 상담",
+            audience="회사 장비, 부서 노트북, 반복 구매 기준이 필요한 담당자",
+            trigger="여러 명의 예산과 용도를 승인 가능한 문서로 정리해야 할 때",
+            cta_label="Team 구매 표준안 보기",
+            cta_path="/launch#team-consult",
+            value_prop=team_consult.decision_maker_brief,
+            proof=team_consult.summary,
+            friction="상담 전에 인원, 예산, 구매 시점만 받아 agenda를 자동으로 채우세요.",
+            tracking_event="launch_activation_team_consult",
+            priority_score=min(
+                100.0,
+                50 + pricing.team_intent_count * 16 + team_consult.estimated_team_mrr_krw / 8000,
+            ),
+        ),
+        _launch_activation_offer(
+            key="community_reply_to_analysis",
+            label="커뮤니티 답변에서 분석으로 연결",
+            audience="견적 댓글에서 답을 듣고도 확신이 부족한 방문자",
+            trigger="최저가/제휴/호환성 질문이 반복될 때",
+            cta_label="내 견적 검수하기",
+            cta_path=route.cta_path if route else "/launch#launch-action-router",
+            value_prop="댓글 답변을 복사하는 데서 끝내지 않고 개인 조건 분석으로 넘깁니다.",
+            proof=community.pinned_update,
+            friction="답변에는 한 문장 proof와 한 개 CTA만 남겨 선택 피로를 줄이세요.",
+            tracking_event="launch_activation_community_to_analysis",
+            priority_score=min(100.0, 46 + community.response_score * 0.32 + conversion.conversion_score * 0.2),
+        ),
+    ]
+    return sorted(offers, key=lambda offer: offer.priority_score, reverse=True)
+
+
+def _launch_activation_offer(
+    *,
+    key: str,
+    label: str,
+    audience: str,
+    trigger: str,
+    cta_label: str,
+    cta_path: str,
+    value_prop: str,
+    proof: str,
+    friction: str,
+    tracking_event: str,
+    priority_score: float,
+) -> LaunchActivationOffer:
+    return LaunchActivationOffer(
+        key=key,
+        label=label,
+        audience=audience,
+        trigger=trigger,
+        cta_label=cta_label,
+        cta_path=cta_path,
+        value_prop=value_prop,
+        proof=proof,
+        friction=friction,
+        tracking_event=tracking_event,
+        priority_score=round(priority_score, 1),
+    )
+
+
+def _launch_activation_headline(
+    status: CheckStatus,
+    activation_score: float,
+    primary_offer: LaunchActivationOffer,
+) -> str:
+    if status == CheckStatus.ok:
+        return f"전환 오퍼 {round(activation_score)}점, {primary_offer.label}을 첫 CTA로 밀어도 됩니다."
+    if status == CheckStatus.blocker:
+        return f"전환 오퍼 {round(activation_score)}점, 첫 CTA blocker를 닫아야 합니다."
+    return f"전환 오퍼 {round(activation_score)}점, {primary_offer.label}을 우선 검증하세요."
+
+
+def _launch_activation_summary(
+    conversion: PublicConversionBoard,
+    pricing: PricingDashboard,
+    referrals: WaitlistReferralDashboard,
+    media: LaunchMediaKit,
+    offers: list[LaunchActivationOffer],
+) -> str:
+    return (
+        f"전환 보드 {round(conversion.conversion_score)}점, 미디어 키트 {round(media.media_score)}점, "
+        f"추천 {referrals.total_referrals}건, 요금제 의향 {pricing.intent_count}건을 기반으로 "
+        f"런칭 방문자를 {len(offers)}개 행동으로 분기합니다."
+    )
+
+
+def _launch_activation_handoff_prompts(
+    primary_offer: LaunchActivationOffer,
+    offers: list[LaunchActivationOffer],
+) -> list[str]:
+    prompts = [
+        f"{primary_offer.label}: {primary_offer.value_prop}",
+        "예산, 용도, 후보 링크를 한 줄로 받아 분석 폼 prefill에 넘기세요.",
+        "분석 완료 화면에는 저장 리포트, 가격 알림, 추천 공유, Premium 관심 등록 중 하나만 다음 CTA로 보여주세요.",
+    ]
+    prompts.extend(f"{offer.audience} -> {offer.cta_label}" for offer in offers[1:3])
+    return prompts[:6]
+
+
+def _launch_activation_proof_points(
+    conversion: PublicConversionBoard,
+    media: LaunchMediaKit,
+    community: LaunchCommunityKit,
+    team_consult: TeamPurchaseConsultKit,
+) -> list[str]:
+    points = [conversion.summary, media.hero_statement, community.summary, team_consult.decision_maker_brief]
+    points.extend(media.proof_points[:3])
+    return list(dict.fromkeys(points))[:7]
+
+
+def _launch_activation_next_actions(
+    status: CheckStatus,
+    offers: list[LaunchActivationOffer],
+    conversion: PublicConversionBoard,
+    referrals: WaitlistReferralDashboard,
+    pricing: PricingDashboard,
+) -> list[str]:
+    primary = offers[0]
+    actions = [
+        f"런칭룸 상단 CTA를 24시간 동안 '{primary.cta_label}'로 고정하고 {primary.tracking_event}를 기록하세요.",
+        "외부 소개 글, 커뮤니티 답변, 미디어 피치의 링크를 모두 같은 primary offer anchor로 맞추세요.",
+        "분석 시작, 추천 참여, 요금제 관심, Team 상담을 서로 다른 이벤트로 분리해 병목을 보세요.",
+    ]
+    if status != CheckStatus.ok:
+        actions.insert(0, "전환 보드 warning 단계의 next action을 먼저 닫고 큰 채널 배포를 진행하세요.")
+    if referrals.total_referrals == 0:
+        actions.append("첫 10명에게 추천 대기열 패스를 보내 공유 URL seed를 만드세요.")
+    if pricing.intent_count == 0:
+        actions.append("무료 분석 결과 화면에 Premium 관심 등록을 결제 대신 가벼운 의향 CTA로 배치하세요.")
+    actions.extend(conversion.next_actions[:2])
+    return list(dict.fromkeys(actions))[:8]
 
 
 def _retention_signals(
