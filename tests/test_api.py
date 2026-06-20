@@ -1227,6 +1227,85 @@ def test_public_ownership_cost_kit_estimates_resale_and_monthly_cost() -> None:
     assert any("결제를 보류" in action for action in risky_payload["next_actions"])
 
 
+def test_public_warranty_return_kit_checks_policy_before_checkout() -> None:
+    response = client.post(
+        "/public/warranty-return-kit",
+        json={
+            "category": "desktop_pc",
+            "product_title": "Creator RTX 4070 SUPER Build",
+            "seller_name": "PC Mall",
+            "purchase_price_krw": 2_185_000,
+            "return_window_days": 14,
+            "exchange_window_days": 14,
+            "dead_on_arrival_days": 7,
+            "warranty_months": 24,
+            "opened_box_return_allowed": True,
+            "warranty_provider": "manufacturer",
+            "warranty_transferable": True,
+            "return_shipping_fee_krw": 10_000,
+            "restocking_fee_percent": 0,
+            "policy_text": "국내 제조사 AS, 초기 불량 교환 가능",
+            "risk_terms": [],
+            "source": "pytest",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["kit_version"] == "specpilot.public_warranty_return_kit.v1"
+    assert payload["category"] == "desktop_pc"
+    assert payload["seller_name"] == "PC Mall"
+    assert payload["priority"] == "ok"
+    assert payload["protection_score"] >= 90
+    assert payload["estimated_return_cost_krw"] == 10_000
+    assert {check["check_id"] for check in payload["policy_checks"]} == {
+        "return_window",
+        "dead_on_arrival",
+        "opened_box",
+        "warranty_provider",
+        "warranty_transfer",
+        "return_cost",
+    }
+    assert {line["line_id"] for line in payload["cost_lines"]} == {
+        "return_shipping",
+        "restocking_fee",
+        "estimated_return_cost",
+    }
+    assert any("개봉 후" in question for question in payload["seller_questions"])
+    assert any("판매 페이지" in item for item in payload["evidence_checklist"])
+    assert "SpecPilot AI 보증/반품 검수" in payload["share_copy"]
+    assert "보증/반품" in payload["analysis_prefill"]
+    assert payload["primary_cta_path"] == "#analysis"
+
+    risky = client.post(
+        "/public/warranty-return-kit",
+        json={
+            "category": "laptop",
+            "product_title": "Unknown Import Laptop",
+            "seller_name": "Grey Market",
+            "purchase_price_krw": 1_700_000,
+            "return_window_days": 0,
+            "exchange_window_days": 0,
+            "dead_on_arrival_days": 0,
+            "warranty_months": 3,
+            "opened_box_return_allowed": False,
+            "warranty_provider": "seller overseas",
+            "warranty_transferable": False,
+            "return_shipping_fee_krw": 120_000,
+            "restocking_fee_percent": 15,
+            "policy_text": "개봉 후 반품 불가, 해외 AS, 보증 없음",
+            "risk_terms": ["반품 불가", "AS 불가"],
+        },
+    )
+    assert risky.status_code == 200
+    risky_payload = risky.json()
+    assert risky_payload["priority"] == "blocker"
+    assert risky_payload["protection_score"] < 60
+    assert risky_payload["estimated_return_cost_krw"] == 375_000
+    assert any(check["status"] == "blocker" for check in risky_payload["policy_checks"])
+    assert any("결제를 보류" in action for action in risky_payload["next_actions"])
+
+
 def test_public_checkout_nudge_kit_turns_cart_check_into_followup_plan() -> None:
     hold = client.post(
         "/public/checkout-nudge-kit",

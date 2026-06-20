@@ -59,6 +59,7 @@ SpecPilot AI는 최저가 링크만 보여주는 쇼핑 도구가 아닙니다. 
 - 공개 세팅 호환성 키트: CPU/GPU/RAM/SSD/모니터/파워/폼팩터 조합을 목적 기준으로 점검하고 병목·전력·과투자 리스크를 검수 prefill로 연결
 - 공개 업그레이드 수명 검수 키트: RAM/SSD 슬롯, 플랫폼, 파워, 케이스, 노트북 온보드 조건을 목표 보유 기간과 연결해 장기 사용 여지를 점수화
 - 공개 총소유비용/재판매 가치 키트: 구매가, 보유 기간, 유지비, 업그레이드비, 다운타임, 재판매율을 월 실질 비용과 감가 리스크로 변환
+- 공개 보증/반품 정책 검수 키트: 반품/교환 기간, 초기 불량 예외, 개봉 후 반품, 보증 주체, 반품 비용, 위험 약관을 결제 전 보호 점수로 변환
 - 공개 상품명 해석 키트: 쇼핑몰 상품명/옵션명에서 CPU/GPU/RAM/SSD/OS와 리퍼·전시·해외 조건을 구조화하고 검수 prefill을 제공
 - 공개 옵션/사양 빠른 검수기: 판매 페이지 옵션명, 장바구니 문구, 최종 결제 금액을 붙여 넣으면 예산 초과, 사양 불일치, 증거 누락을 결제 전 blocker/warning으로 판정하고 구매 세이프티 브리프, 판매자 확인 질문, 승인/공유 요약, 캡처 체크리스트를 반환
 - 공개 후보 비교 스냅샷: 데스크톱/노트북 후보 5개를 가격, 목적 적합도, 리뷰 신뢰, 구매 안정성으로 정렬하고 예산/성능/안전 우선 대안 시나리오를 제공
@@ -353,6 +354,31 @@ curl -X POST http://127.0.0.1:8000/public/ownership-cost-kit \
     "daily_value_krw": 120000,
     "brand_resale_signal": "medium",
     "condition_risks": [],
+    "source": "release_smoke"
+  }'
+```
+
+공개 보증/반품 정책 검수 키트는 반품/교환 기간, 초기 불량 예외, 개봉 후 반품 가능 여부, 보증 주체, 반품 비용, 위험 약관을 결제 전 보호 점수로 변환합니다.
+
+```bash
+curl -X POST http://127.0.0.1:8000/public/warranty-return-kit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "category": "desktop_pc",
+    "product_title": "Creator RTX 4070 SUPER Build",
+    "seller_name": "PC Mall",
+    "purchase_price_krw": 2185000,
+    "return_window_days": 14,
+    "exchange_window_days": 14,
+    "dead_on_arrival_days": 7,
+    "warranty_months": 24,
+    "opened_box_return_allowed": true,
+    "warranty_provider": "manufacturer",
+    "warranty_transferable": true,
+    "return_shipping_fee_krw": 10000,
+    "restocking_fee_percent": 0,
+    "policy_text": "국내 제조사 AS, 초기 불량 교환 가능",
+    "risk_terms": [],
     "source": "release_smoke"
   }'
 ```
@@ -1687,6 +1713,7 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 - `/public/setup-compatibility-kit`: 공개 CPU/GPU/RAM/SSD/모니터/파워/폼팩터 또는 노트북 휴대성 조합을 목적 기준으로 점검하고 분석/검수 prefill 조회
 - `/public/upgrade-readiness-kit`: 공개 RAM/SSD 슬롯, CPU 플랫폼, 파워, 케이스, 노트북 온보드 제약을 목표 보유 기간 기준 세팅 수명 점수, 업그레이드 경로, 판매자 질문으로 변환
 - `/public/ownership-cost-kit`: 공개 구매가/보유 기간/유지비/업그레이드비/다운타임/재판매율을 총소유비용, 월 실질 비용, 감가 시나리오, 판매자 질문으로 변환
+- `/public/warranty-return-kit`: 공개 반품/교환 기간, 초기 불량 예외, 개봉 후 반품, 보증 주체, 보증 승계, 반품 비용, 위험 약관을 결제 전 보호 점수, 판매자 질문, 증거 체크리스트로 변환
 - `/public/shopping-cart-intake-kit`: 공개 쇼핑몰 장바구니 텍스트/항목을 총액, 예산 차이, 필수 슬롯 누락, 위험 조건, 옵션/사양 검수 prefill, 구매 승인 prefill로 변환
 - `/public/listing-decoder-kit`: 공개 쇼핑몰 상품명/옵션명에서 핵심 사양과 구매 조건 위험어를 구조화하고 검수 prefill, 판매자 질문, 공유 문구 조회
 - `/public/spec-risk-scanner`, `/public/spec-risk-scanner/result`: 공개 옵션/사양 빠른 검수 메타와 결제 전 예산 초과, CPU/GPU/RAM/SSD/OS 불일치, 배송/반품/AS 증거 누락 판정, 구매 세이프티 브리프, 판매자 질문, 승인 요약, 캡처 체크리스트 조회

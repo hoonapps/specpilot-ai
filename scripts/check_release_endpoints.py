@@ -204,6 +204,22 @@ CHECKS = (
             "share_copy",
         ),
     ),
+    SmokeCheck(
+        name="public-warranty-return-kit",
+        method="POST",
+        path="/public/warranty-return-kit",
+        required_keys=(
+            "kit_version",
+            "priority",
+            "protection_score",
+            "estimated_return_cost_krw",
+            "policy_checks",
+            "cost_lines",
+            "seller_questions",
+            "evidence_checklist",
+            "share_copy",
+        ),
+    ),
 )
 
 
@@ -702,6 +718,25 @@ def run_smoke() -> list[dict[str, Any]]:
                 "daily_value_krw": 120_000,
                 "brand_resale_signal": "medium",
                 "condition_risks": [],
+                "source": "release_smoke",
+            }
+        if check.name == "public-warranty-return-kit":
+            json_body = {
+                "category": "desktop_pc",
+                "product_title": "Creator RTX 4070 SUPER Build",
+                "seller_name": "PC Mall",
+                "purchase_price_krw": 2_185_000,
+                "return_window_days": 14,
+                "exchange_window_days": 14,
+                "dead_on_arrival_days": 7,
+                "warranty_months": 24,
+                "opened_box_return_allowed": True,
+                "warranty_provider": "manufacturer",
+                "warranty_transferable": True,
+                "return_shipping_fee_krw": 10_000,
+                "restocking_fee_percent": 0,
+                "policy_text": "국내 제조사 AS, 초기 불량 교환 가능",
+                "risk_terms": [],
                 "source": "release_smoke",
             }
         response = client.request(check.method, check.path, headers=headers, json=json_body)

@@ -133,6 +133,7 @@ from specpilot_ai.core.models import (
     PublicSpecRescueKit,
     PublicSpecRiskScanner,
     PublicUpgradeReadinessKit,
+    PublicWarrantyReturnKit,
     PurchaseAftercareRequest,
     PurchaseApprovalBriefRequest,
     PurchaseDecisionBoard,
@@ -193,6 +194,7 @@ from specpilot_ai.core.models import (
     WaitlistReferral,
     WaitlistReferralDashboard,
     WaitlistReferralRequest,
+    WarrantyReturnRequest,
     WorkspaceContext,
 )
 from specpilot_ai.graph.neo4j_client import Neo4jRepository
@@ -236,6 +238,7 @@ from specpilot_ai.services.spec_risk_scanner import (
 from specpilot_ai.services.start_concierge import build_start_concierge
 from specpilot_ai.services.trust import build_privacy_policy, build_trust_center, build_trust_policy
 from specpilot_ai.services.upgrade_readiness import build_public_upgrade_readiness_kit
+from specpilot_ai.services.warranty_return import build_public_warranty_return_kit
 from specpilot_ai.sources.collector import SourceCollector
 from specpilot_ai.sources.url_ingestion import ingest_source_url
 from specpilot_ai.storage.sqlite_store import SpecPilotStore, pricing_plans
@@ -1330,6 +1333,16 @@ def public_ownership_cost_kit(
     request: OwnershipCostRequest,
 ) -> PublicOwnershipCostKit:
     return build_public_ownership_cost_kit(request)
+
+
+@app.post(
+    "/public/warranty-return-kit",
+    response_model=PublicWarrantyReturnKit,
+)
+def public_warranty_return_kit(
+    request: WarrantyReturnRequest,
+) -> PublicWarrantyReturnKit:
+    return build_public_warranty_return_kit(request)
 
 
 @app.post(

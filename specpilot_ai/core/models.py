@@ -2060,6 +2060,63 @@ class PublicOwnershipCostKit(BaseModel):
     next_actions: list[str] = Field(default_factory=list)
 
 
+class WarrantyReturnRequest(BaseModel):
+    category: Category = Category.desktop_pc
+    product_title: str = "구매 후보"
+    seller_name: str = "판매자"
+    purchase_price_krw: int = Field(default=2_000_000, ge=0, le=50_000_000)
+    return_window_days: int = Field(default=7, ge=0, le=365)
+    exchange_window_days: int = Field(default=7, ge=0, le=365)
+    dead_on_arrival_days: int = Field(default=7, ge=0, le=365)
+    warranty_months: int = Field(default=12, ge=0, le=120)
+    opened_box_return_allowed: bool | None = None
+    warranty_provider: str = "manufacturer"
+    warranty_transferable: bool | None = None
+    return_shipping_fee_krw: int = Field(default=0, ge=0, le=5_000_000)
+    restocking_fee_percent: int = Field(default=0, ge=0, le=100)
+    policy_text: str = ""
+    risk_terms: list[str] = Field(default_factory=list)
+    source: str = "web"
+
+
+class WarrantyReturnCheck(BaseModel):
+    check_id: str
+    label: str
+    status: CheckStatus
+    finding: str
+    recommendation: str
+
+
+class WarrantyReturnCostLine(BaseModel):
+    line_id: str
+    label: str
+    amount_krw: int
+    explanation: str
+
+
+class PublicWarrantyReturnKit(BaseModel):
+    kit_version: str = "specpilot.public_warranty_return_kit.v1"
+    generated_at: str
+    category: Category
+    product_title: str
+    seller_name: str
+    priority: CheckStatus
+    protection_score: int = Field(ge=0, le=100)
+    estimated_return_cost_krw: int
+    headline: str
+    summary: str
+    policy_checks: list[WarrantyReturnCheck] = Field(default_factory=list)
+    cost_lines: list[WarrantyReturnCostLine] = Field(default_factory=list)
+    seller_questions: list[str] = Field(default_factory=list)
+    evidence_checklist: list[str] = Field(default_factory=list)
+    buyer_message: str
+    analysis_prefill: str
+    share_copy: str
+    primary_cta_label: str = "보증/반품 기준으로 분석 시작"
+    primary_cta_path: str = "#analysis"
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class CheckoutNudgeRequest(BaseModel):
     category: Category = Category.desktop_pc
     product_title: str = "구매 후보"
