@@ -47,6 +47,7 @@ from specpilot_ai.core.models import (
     CompletionReportPreviewRequest,
     CompletionReportTemplate,
     CompletionReportTemplateRequest,
+    DataGovernanceDashboard,
     FeedbackRecord,
     FeedbackRequest,
     IntakeDiagnosisRequest,
@@ -65,6 +66,7 @@ from specpilot_ai.core.models import (
     PriceAlertPlan,
     PricingDashboard,
     PricingPlan,
+    PrivacyPolicySummary,
     ProductBrief,
     PublicReport,
     PurchaseLink,
@@ -111,7 +113,7 @@ from specpilot_ai.core.models import (
 from specpilot_ai.graph.neo4j_client import Neo4jRepository
 from specpilot_ai.graph.product_graph import pc_purchase_graph_schema
 from specpilot_ai.services.intake import diagnose_intake
-from specpilot_ai.services.trust import build_trust_policy
+from specpilot_ai.services.trust import build_privacy_policy, build_trust_policy
 from specpilot_ai.sources.collector import SourceCollector
 from specpilot_ai.sources.url_ingestion import ingest_source_url
 from specpilot_ai.storage.sqlite_store import SpecPilotStore, pricing_plans
@@ -222,6 +224,11 @@ def product_brief() -> ProductBrief:
 @app.get("/policy/trust", response_model=TrustPolicySummary)
 def trust_policy() -> TrustPolicySummary:
     return build_trust_policy()
+
+
+@app.get("/policy/privacy", response_model=PrivacyPolicySummary)
+def privacy_policy() -> PrivacyPolicySummary:
+    return build_privacy_policy()
 
 
 @app.get("/demo/scenarios")
@@ -915,6 +922,13 @@ def operations_metrics(
     workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
 ) -> OperationsMetrics:
     return _store().metrics_for_workspace(workspace.workspace_id)
+
+
+@app.get("/ops/data-governance", response_model=DataGovernanceDashboard)
+def data_governance(
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> DataGovernanceDashboard:
+    return _store().data_governance_for_workspace(workspace.workspace_id)
 
 
 @app.get("/ops/quality", response_model=QualityDashboard)

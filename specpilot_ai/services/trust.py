@@ -3,6 +3,8 @@ from collections import Counter
 from specpilot_ai.core.models import (
     BenchmarkEvidence,
     PriceSnapshot,
+    PrivacyDataCategory,
+    PrivacyPolicySummary,
     ReviewInsight,
     SourceKind,
     SourceTrustAssessment,
@@ -105,6 +107,68 @@ def build_trust_policy(
             "신뢰도 0.8 미만 또는 리스크 플래그가 있는 근거는 관리자 검수 큐에 넣습니다.",
         ],
         source_assessments=assessments or [_assessment(source, 0) for source in SOURCE_POLICIES],
+    )
+
+
+def build_privacy_policy() -> PrivacyPolicySummary:
+    return PrivacyPolicySummary(
+        headline=(
+            "구매 판단에 필요한 최소 데이터만 저장하고 연락처 원문은 "
+            "공개 표면에 노출하지 않습니다."
+        ),
+        data_minimization=(
+            "분석 요청, 저장 리포트, 공개 공유 토큰, 알림/발송 운영 이벤트, "
+            "피드백과 베타 리드는 구매 의사결정 개선에 필요한 필드만 분리해 저장합니다."
+        ),
+        public_report_policy=(
+            "공개 리포트는 공유 토큰이 발급된 단일 리포트만 조회하며 워크스페이스 내부 "
+            "목록, 연락처, 운영 메모, 결제 검수 이력은 노출하지 않습니다."
+        ),
+        contact_policy=(
+            "피드백, 베타 리드, 구독 의향, 완료 리포트, 알림 발송 이벤트의 연락처는 "
+            "마스킹된 값으로 운영 표면에 표시합니다."
+        ),
+        retention_policy=(
+            "분석/리포트 근거는 180일, 발송/알림 이벤트는 90일, 피드백/리드는 365일 "
+            "기준으로 보존하고 운영 대시보드에서 보존 초과 항목을 점검합니다."
+        ),
+        user_controls=[
+            "공유 리포트는 워크스페이스 소유자가 언제든 공유 해제할 수 있습니다.",
+            "구매 결과의 주문번호는 원문 대신 마스킹된 값만 저장합니다.",
+            "베타/요금제 연락은 동의가 있는 경우에만 접수합니다.",
+            "운영자는 데이터 거버넌스 대시보드에서 보존 초과와 원문 연락처 표면을 점검합니다.",
+        ],
+        prohibited_data=[
+            "주민등록번호, 카드번호, 계좌번호 등 결제 민감정보",
+            "사이트 로그인 비밀번호 또는 판매처 계정 정보",
+            "업무상 비밀 문서 원문이나 제3자의 동의 없는 연락처",
+        ],
+        data_categories=[
+            PrivacyDataCategory(
+                category="analysis",
+                label="분석 요청과 추천 리포트",
+                stored_fields=["구매 조건", "후보 비교", "출처 근거", "품질 감사", "trace span"],
+                masking="연락처 없음. 공개 리포트는 share token 단위로만 접근",
+                retention="기본 180일 보존 후 운영 대시보드에서 정리 대상 표시",
+                user_control="저장 리포트 공유 생성/해제",
+            ),
+            PrivacyDataCategory(
+                category="contact",
+                label="피드백/베타/요금제 연락처",
+                stored_fields=["마스킹된 이메일 또는 연락처", "동의 여부", "사용 목적"],
+                masking="예: bu***@example.com",
+                retention="기본 365일 보존",
+                user_control="동의 없는 리드는 접수하지 않음",
+            ),
+            PrivacyDataCategory(
+                category="delivery",
+                label="알림과 완료 리포트 발송 이벤트",
+                stored_fields=["마스킹된 대상", "발송 상태", "열람/클릭/반송 이벤트"],
+                masking="운영 콘솔에는 마스킹된 대상만 표시",
+                retention="기본 90일 보존",
+                user_control="unsubscribe 제외 정책과 채널 비활성화",
+            ),
+        ],
     )
 
 

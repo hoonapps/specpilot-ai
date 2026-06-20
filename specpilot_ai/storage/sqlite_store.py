@@ -46,6 +46,8 @@ from specpilot_ai.core.models import (
     CompletionReportPreviewRequest,
     CompletionReportTemplate,
     CompletionReportTemplateRequest,
+    DataGovernanceDashboard,
+    DataInventoryItem,
     FeedbackRecord,
     FeedbackRequest,
     IntegrationCategory,
@@ -100,6 +102,106 @@ from specpilot_ai.core.models import (
 )
 
 SUPPORTED_ALERT_CHANNELS = {"email", "webhook", "sms"}
+DATA_INVENTORY_SPECS = [
+    {
+        "table_name": "analysis_runs",
+        "label": "분석 요청/결과",
+        "pii_scope": "none",
+        "retention_days": 180,
+        "created_column": "created_at",
+    },
+    {
+        "table_name": "saved_reports",
+        "label": "저장 리포트와 공유 토큰",
+        "pii_scope": "workspace_scoped",
+        "retention_days": 180,
+        "created_column": "created_at",
+    },
+    {
+        "table_name": "report_advisor_answers",
+        "label": "저장 리포트 구매 상담",
+        "pii_scope": "masked_contact",
+        "retention_days": 180,
+        "created_column": "created_at",
+    },
+    {
+        "table_name": "checkout_reviews",
+        "label": "결제 전 검수",
+        "pii_scope": "workspace_scoped",
+        "retention_days": 180,
+        "created_column": "created_at",
+    },
+    {
+        "table_name": "purchase_outcomes",
+        "label": "실제 구매 결과",
+        "pii_scope": "masked_order",
+        "retention_days": 365,
+        "created_column": "created_at",
+    },
+    {
+        "table_name": "alert_subscriptions",
+        "label": "가격 알림 구독",
+        "pii_scope": "raw_contact",
+        "retention_days": 90,
+        "created_column": "created_at",
+    },
+    {
+        "table_name": "alert_delivery_events",
+        "label": "목표가 알림 이벤트",
+        "pii_scope": "masked_contact",
+        "retention_days": 90,
+        "created_column": "created_at",
+    },
+    {
+        "table_name": "alert_delivery_attempts",
+        "label": "알림 발송 시도",
+        "pii_scope": "masked_contact",
+        "retention_days": 90,
+        "created_column": "created_at",
+    },
+    {
+        "table_name": "completion_report_deliveries",
+        "label": "완료 리포트 발송",
+        "pii_scope": "masked_contact",
+        "retention_days": 90,
+        "created_column": "created_at",
+    },
+    {
+        "table_name": "completion_delivery_engagement",
+        "label": "완료 리포트 열람/클릭",
+        "pii_scope": "masked_contact",
+        "retention_days": 90,
+        "created_column": "created_at",
+    },
+    {
+        "table_name": "user_feedback",
+        "label": "사용자 피드백",
+        "pii_scope": "masked_contact",
+        "retention_days": 365,
+        "created_column": "created_at",
+    },
+    {
+        "table_name": "beta_leads",
+        "label": "베타 신청 리드",
+        "pii_scope": "masked_contact",
+        "retention_days": 365,
+        "created_column": "created_at",
+    },
+    {
+        "table_name": "subscription_intents",
+        "label": "요금제 관심 등록",
+        "pii_scope": "masked_contact",
+        "retention_days": 365,
+        "created_column": "created_at",
+    },
+    {
+        "table_name": "observability_exports",
+        "label": "관측성 export payload",
+        "pii_scope": "workspace_scoped",
+        "retention_days": 30,
+        "created_column": "created_at",
+    },
+]
 
 
 class SpecPilotStore:
@@ -1524,7 +1626,7 @@ class SpecPilotStore:
             target_price_krw=target_price_krw,
             current_price_krw=current_price,
             channels=channels,
-            contact=contact,
+            contact_masked=_mask_contact(contact),
             owner_label=owner_label,
             status="active",
             created_at=now,
@@ -1547,7 +1649,7 @@ class SpecPilotStore:
                     subscription.target_price_krw,
                     subscription.current_price_krw,
                     json.dumps(subscription.channels, ensure_ascii=False),
-                    subscription.contact,
+                    contact,
                     subscription.owner_label,
                     subscription.status,
                     subscription.created_at,
@@ -1606,7 +1708,7 @@ class SpecPilotStore:
                 current_price_krw=current_price,
                 delta_krw=subscription.target_price_krw - current_price,
                 channels=subscription.channels,
-                contact_masked=_mask_contact(subscription.contact),
+                contact_masked=subscription.contact_masked,
                 delivery_status="dry_run" if dry_run else "queued",
                 message=(
                     f"{subscription.product_id} 현재가 {current_price:,}원이 "
@@ -3835,6 +3937,54 @@ class SpecPilotStore:
             conversion_ready_rate=round(float(ready_row[0] or 0), 4),
         )
 
+    def data_governance_for_workspace(self, workspace_id: str) -> DataGovernanceDashboard:
+        inventory: list[DataInventoryItem] = []
+        with self._connect() as conn:
+            for spec in DATA_INVENTORY_SPECS:
+                item = _data_inventory_item(conn, workspace_id, spec)
+                inventory.append(item)
+        total_records = sum(item.record_count for item in inventory)
+        raw_contact_surfaces = sum(
+            1
+            for item in inventory
+            if item.record_count and item.pii_scope == "raw_contact"
+        )
+        masked_contact_surfaces = sum(
+            1
+            for item in inventory
+            if item.record_count and item.pii_scope == "masked_contact"
+        )
+        retention_actions = [
+            item.recommendation
+            for item in inventory
+            if item.status != CheckStatus.ok
+        ]
+        status = CheckStatus.ok
+        if any(item.status == CheckStatus.blocker for item in inventory):
+            status = CheckStatus.blocker
+        elif any(item.status == CheckStatus.warning for item in inventory):
+            status = CheckStatus.warning
+        return DataGovernanceDashboard(
+            workspace_id=workspace_id,
+            generated_at=_now(),
+            status=status,
+            summary=_data_governance_summary(status, total_records, raw_contact_surfaces),
+            total_records=total_records,
+            raw_contact_surfaces=raw_contact_surfaces,
+            masked_contact_surfaces=masked_contact_surfaces,
+            retention_actions=retention_actions[:8],
+            deletion_controls=[
+                "DELETE /reports/{report_id}/share 로 공개 리포트 공유를 해제합니다.",
+                "완료 리포트 수신자 그룹은 unsubscribe 제외 정책으로 운영합니다.",
+                "베타/요금제 연락은 contact_consent가 있는 요청만 저장합니다.",
+                (
+                    "보존 기간 초과 항목은 운영자가 workspace 단위 export 후 "
+                    "삭제 작업 대상으로 분리합니다."
+                ),
+            ],
+            inventory=inventory,
+        )
+
     def beta_readiness_for_workspace(self, workspace_id: str) -> BetaReadinessDashboard:
         metrics = self.metrics_for_workspace(workspace_id)
         quality = self.quality_dashboard_for_workspace(workspace_id, limit=10)
@@ -3927,6 +4077,7 @@ class SpecPilotStore:
         learning = self.learning_insights_for_workspace(workspace_id, limit=20)
         backlog = self.beta_backlog_action_summary_for_workspace(workspace_id, limit=200)
         integrations = self.integration_readiness_for_workspace(workspace_id)
+        data_governance = self.data_governance_for_workspace(workspace_id)
         checks = [
             _launch_gate_check(
                 area="readiness",
@@ -4011,6 +4162,18 @@ class SpecPilotStore:
                 if integrations.required_actions
                 else "핵심 외부 연동의 credential, rate limit, 보존 정책을 유지하세요.",
             ),
+            _launch_gate_check(
+                area="data_governance",
+                label="프라이버시/데이터 보존",
+                status=data_governance.status,
+                metric=(
+                    f"데이터 {data_governance.total_records}건 / "
+                    f"원문 연락처 표면 {data_governance.raw_contact_surfaces}개"
+                ),
+                recommendation=data_governance.retention_actions[0]
+                if data_governance.retention_actions
+                else "마스킹과 보존 정책 기준을 유지하세요.",
+            ),
         ]
         status, decision = _launch_gate_status_and_decision(
             checks,
@@ -4044,6 +4207,8 @@ class SpecPilotStore:
                 "learning_insights": learning.insight_count,
                 "integration_score": integrations.readiness_score,
                 "integration_blockers": integrations.blocker_count,
+                "data_governance_status": data_governance.status.value,
+                "raw_contact_surfaces": data_governance.raw_contact_surfaces,
             },
         )
 
@@ -4999,7 +5164,7 @@ def _alert_from_row(row: sqlite3.Row) -> AlertSubscription:
         target_price_krw=data["target_price_krw"],
         current_price_krw=data["current_price_krw"],
         channels=json.loads(data["channels_json"]),
-        contact=data["contact"],
+        contact_masked=_mask_contact(data["contact"]),
         owner_label=data["owner_label"],
         status=data["status"],
         created_at=data["created_at"],
@@ -6501,6 +6666,79 @@ def _integration_readiness_summary(
             "처리하기 전에는 공개 출시를 막아야 합니다."
         )
     return f"외부 연동 준비도 {score}점입니다. warning {warning_count}건을 검증하세요."
+
+
+def _data_inventory_item(
+    conn: sqlite3.Connection,
+    workspace_id: str,
+    spec: dict[str, object],
+) -> DataInventoryItem:
+    table = str(spec["table_name"])
+    created_column = str(spec["created_column"])
+    row = conn.execute(
+        f"""
+        SELECT COUNT(*) AS record_count,
+               MIN({created_column}) AS earliest_created_at,
+               MAX({created_column}) AS latest_created_at
+        FROM {table}
+        WHERE workspace_id = ?
+        """,
+        (workspace_id,),
+    ).fetchone()
+    record_count = int(row["record_count"] or 0)
+    retention_days = int(spec["retention_days"])
+    pii_scope = str(spec["pii_scope"])
+    status = CheckStatus.ok
+    recommendation = "보존/마스킹 기준을 충족합니다."
+    earliest = row["earliest_created_at"]
+    if record_count and pii_scope == "raw_contact":
+        status = CheckStatus.blocker
+        recommendation = (
+            f"{spec['label']} 테이블은 원문 연락처 컬럼을 포함합니다. "
+            "응답 표면 마스킹을 유지하고 저장 컬럼을 contact_hash/contact_masked로 분리하세요."
+        )
+    elif record_count and _retention_expired(earliest, retention_days):
+        status = CheckStatus.warning
+        recommendation = (
+            f"{spec['label']} 보존 기준 {retention_days}일을 넘은 항목이 있습니다. "
+            "워크스페이스 export 후 삭제 작업 대상으로 분리하세요."
+        )
+    return DataInventoryItem(
+        table_name=table,
+        label=str(spec["label"]),
+        record_count=record_count,
+        pii_scope=pii_scope,
+        retention_days=retention_days,
+        earliest_created_at=earliest,
+        latest_created_at=row["latest_created_at"],
+        status=status,
+        recommendation=recommendation,
+    )
+
+
+def _retention_expired(created_at: str | None, retention_days: int) -> bool:
+    parsed = _parse_iso_datetime(created_at)
+    if parsed is None:
+        return False
+    return parsed < datetime.now(UTC) - timedelta(days=retention_days)
+
+
+def _data_governance_summary(
+    status: CheckStatus,
+    total_records: int,
+    raw_contact_surfaces: int,
+) -> str:
+    if status == CheckStatus.blocker:
+        return (
+            f"워크스페이스 데이터 {total_records}건 중 원문 연락처 표면 "
+            f"{raw_contact_surfaces}개가 있어 공개 출시 전 저장 구조 보강이 필요합니다."
+        )
+    if status == CheckStatus.warning:
+        return (
+            f"워크스페이스 데이터 {total_records}건 기준 보존 기간 초과 항목이 있어 "
+            "삭제 작업 대상을 분리해야 합니다."
+        )
+    return f"워크스페이스 데이터 {total_records}건이 현재 마스킹/보존 기준을 충족합니다."
 
 
 def _ensure_column(

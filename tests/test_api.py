@@ -212,6 +212,25 @@ def test_trust_policy_endpoint_exposes_cache_and_fairness_rules() -> None:
     assert payload["source_assessments"]
 
 
+def test_privacy_policy_endpoint_exposes_retention_and_controls() -> None:
+    response = client.get("/policy/privacy")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["policy_version"] == "specpilot.privacy.v1"
+    assert payload["data_minimization"]
+    assert payload["public_report_policy"]
+    assert payload["contact_policy"]
+    assert payload["retention_policy"]
+    assert payload["user_controls"]
+    assert payload["prohibited_data"]
+    assert {item["category"] for item in payload["data_categories"]} >= {
+        "analysis",
+        "contact",
+        "delivery",
+    }
+
+
 def test_intake_diagnosis_returns_questions_and_normalized_request() -> None:
     weak = client.post(
         "/intake/diagnose",
@@ -1076,6 +1095,8 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
     assert subscribed.status_code == 200
     assert subscribed.json()["status"] == "active"
     assert subscribed.json()["workspace_id"] == saved_payload["workspace_id"]
+    assert subscribed.json()["contact_masked"] == "bu***@example.com"
+    assert "contact" not in subscribed.json()
     subscription_id = subscribed.json()["subscription_id"]
 
     evaluated = client.post(
@@ -1177,6 +1198,19 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
     assert payload["trace_spans"] >= len(analysis["trace_events"])
     assert payload["average_quality_score"] > 0
     assert payload["estimated_cost_krw"] > 0
+
+    data_governance = client.get("/ops/data-governance", headers=WORKSPACE_A)
+    assert data_governance.status_code == 200
+    governance_payload = data_governance.json()
+    assert governance_payload["workspace_id"] == saved_payload["workspace_id"]
+    assert governance_payload["total_records"] > 0
+    assert governance_payload["raw_contact_surfaces"] >= 1
+    assert governance_payload["status"] == "blocker"
+    assert any(
+        item["table_name"] == "alert_subscriptions"
+        and item["status"] == "blocker"
+        for item in governance_payload["inventory"]
+    )
 
     quality = client.get("/ops/quality", headers=WORKSPACE_A)
     assert quality.status_code == 200
@@ -1511,11 +1545,18 @@ def test_report_save_alert_subscription_and_metrics_flow() -> None:
         "conversion",
         "delivery",
         "integration",
+        "data_governance",
     }
     assert launch_payload["metric_cards"]["learning_insights"] >= 1
     assert launch_payload["metric_cards"]["purchase_outcomes"] >= 2
     assert "integration_score" in launch_payload["metric_cards"]
     assert "integration_blockers" in launch_payload["metric_cards"]
+    assert launch_payload["metric_cards"]["data_governance_status"] in {
+        "ok",
+        "warning",
+        "blocker",
+    }
+    assert launch_payload["metric_cards"]["raw_contact_surfaces"] >= 1
 
     isolated_launch_gate = client.get("/beta/launch-gate", headers=WORKSPACE_B)
     assert isolated_launch_gate.status_code == 200

@@ -50,6 +50,7 @@ SpecPilot AI는 최저가 링크만 보여주는 쇼핑 도구가 아닙니다. 
 - Agent trace 조회와 SQLite span 저장
 - Observability export outbox: trace span과 품질 감사 payload를 OpenTelemetry/LangSmith 연동 전 큐로 저장하고 dispatch/retry 상태 추적
 - 외부 연동 준비도: 가격 API, 오픈마켓, 공식 스토어, 이메일, 관측성, 제휴, scheduler provider의 mock/configured/verified/blocker 상태를 운영 게이트로 집계
+- 프라이버시/데이터 거버넌스: 공개 개인정보 정책, 워크스페이스별 데이터 인벤토리, 보존 기간, 원문 연락처 표면을 출시 게이트에 반영
 - SQLite 기반 분석 결과 저장
 - 저장 리포트 조회와 가격 알림 구독
 - 저장 리포트 공개 공유 링크 생성과 공개 리포트 페이지
@@ -77,6 +78,7 @@ SpecPilot AI는 최저가 링크만 보여주는 쇼핑 도구가 아닙니다. 
 - Source provider 정책: live fetch 허용 host, robots/약관 승인, 시간당 rate limit 게이트
 - 관리자 검수 콘솔(`/admin`)
 - 공개 신뢰 정책 API(`/policy/trust`)
+- 공개 프라이버시 정책 API(`/policy/privacy`)
 - Neo4j 그래프 스키마 미리보기
 - 데모 모드 기본 지원
 
@@ -203,6 +205,21 @@ curl http://127.0.0.1:8000/traces/trace_xxxxxxxxxxxx \
 
 ```bash
 curl http://127.0.0.1:8000/policy/trust
+```
+
+### 프라이버시 정책과 데이터 거버넌스
+
+공개 개인정보/보존 정책:
+
+```bash
+curl http://127.0.0.1:8000/policy/privacy
+```
+
+워크스페이스별 데이터 인벤토리와 보존/마스킹 상태:
+
+```bash
+curl http://127.0.0.1:8000/ops/data-governance \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY"
 ```
 
 ### 리포트 저장
@@ -987,12 +1004,14 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 - `/ops/observability/dispatch`: queued/failed observability export를 OpenTelemetry/LangSmith exporter outbox로 dispatch하고 성공/실패/재시도 상태를 저장
 - `/ops/integrations`: 외부 연동 provider의 category, credential 상태, rate limit, 보존 기간, 운영 증거를 워크스페이스별로 저장
 - `/ops/integration-readiness`: 가격 API, 오픈마켓, 공식 스토어, 이메일, observability, scheduler 등 공개 전 필수 연동의 mock/configured/verified/blocker 상태와 필수 액션을 집계
+- `/policy/privacy`: 저장 데이터 범위, 마스킹, 보존 기간, 사용자 제어, 금지 데이터를 공개 정책으로 반환
+- `/ops/data-governance`: 워크스페이스별 테이블 인벤토리, 원문 연락처 표면, 마스킹 표면, 보존 초과 액션을 집계
 - `share_token`, `shared_at`, `share_views`: 저장 리포트 공개 공유 상태
 - `/reports/{report_id}/purchase-links`, `/reports/{report_id}/purchase-link-governance`, `/buy/{link_id}`: 후보별 제휴/비제휴 구매 링크, 제휴 고지, 비제휴 대안 정책 경고, 공개 클릭 redirect와 클릭 지표
 - `/reports/completion-templates`, `/reports/completion-recipient-groups`, `/reports/completion-preview`, `/reports/completion-batches`, `/reports/completion-engagement`, `/reports/completion-provider-events`, `/reports/completion-deliveries/provider-webhooks`, `/t/o/{tracking_token}.png`, `/t/c/{tracking_token}`: 완료 리포트 템플릿, 수신자 그룹, unsubscribe 제외, 발송 전 렌더링 미리보기, batch와 개별 delivery 성공/실패/재시도/열람/클릭/반송/신고/수신 제외 상태, provider 삽입용 공개 추적 픽셀/클릭 리다이렉트
 - `purchase_outcomes`, `completed_purchase_outcomes`, `purchase_conversion_rate`, `average_final_price_delta_krw`, `purchase_outcome_value_krw`: 실제 구매 결과와 최종 결제 금액 차이를 보는 운영 지표
 - `/ops/learning-insights`: 실제 구매 결과, 결제 전 검수 차단, 만족도 피드백을 제품별 전환율, 반품률, 가격 차이, 개선 액션으로 집계
-- `/beta/launch-gate`: readiness, 품질 회귀, 학습 인사이트, 백로그 SLA, 전환/발송/외부 연동 운영 상태를 공개 go/no-go 판정과 필수 액션으로 집계
+- `/beta/launch-gate`: readiness, 품질 회귀, 학습 인사이트, 백로그 SLA, 전환/발송/외부 연동/데이터 거버넌스 운영 상태를 공개 go/no-go 판정과 필수 액션으로 집계
 - `feedback_count`, `average_satisfaction`, `purchase_intent_rate`: 추천 결과가 실제 구매 판단으로 이어지는지 보는 운영 지표
 - `beta_leads`: 베타 신청 리드 수
 - `alert_channels`, `alert_delivery_attempts`, `sent_alert_deliveries`, `failed_alert_deliveries`: 알림 발송 채널과 dispatch 운영 지표
@@ -1000,7 +1019,7 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 
 ## 로컬 저장소
 
-분석 실행, trace span, observability export outbox, 외부 연동 준비도, 저장 리포트, 공유 토큰, 완료 리포트 템플릿/수신자 그룹/batch/delivery/engagement/provider event, 가격 알림 구독, 알림 채널, 발송 큐, 발송 시도, 사용자 피드백, 베타 리드, 출시 게이트 판단 근거는 기본적으로 SQLite에 저장된 운영 신호에서 계산됩니다.
+분석 실행, trace span, observability export outbox, 외부 연동 준비도, 데이터 거버넌스 인벤토리, 저장 리포트, 공유 토큰, 완료 리포트 템플릿/수신자 그룹/batch/delivery/engagement/provider event, 가격 알림 구독, 알림 채널, 발송 큐, 발송 시도, 사용자 피드백, 베타 리드, 출시 게이트 판단 근거는 기본적으로 SQLite에 저장된 운영 신호에서 계산됩니다.
 저장 리포트, 공유 토큰, 외부 연동 provider, 완료 리포트 템플릿/수신자 그룹/batch/engagement/provider event, 알림, 발송 채널, 피드백, 리드는 `X-SpecPilot-Key`에서 계산된 워크스페이스 단위로 분리됩니다. 공개 리포트는 공유 토큰이 발급된 단일 리포트만 조회할 수 있습니다.
 
 기본 경로:
@@ -1128,7 +1147,7 @@ GitHub Actions는 `main` push와 PR에서 다음을 실행합니다.
 - 학습 인사이트는 구매 결과, 결제 전 검수 차단, 피드백 만족도를 합쳐 제품별 전환율, 반품률, 가격 신선도, 다음 개선 액션으로 운영 콘솔에 노출합니다.
 - 완료 리포트 배치는 저장된 구매 리포트를 운영 채널 outbox로 묶어 전달하고, 템플릿, 수신자 그룹, unsubscribe 제외, 발송 전 렌더링 미리보기, provider 삽입용 공개 추적 픽셀/클릭 리다이렉트, provider webhook 기반 반송/신고/수신 제외, batch별 성공/실패/재시도/열람/클릭 상태를 남깁니다.
 - 목표가 도달 알림은 발송 큐와 채널별 dispatch 시도를 남기고 실패 시 재시도 기준을 함께 저장합니다.
-- 연락처와 이메일 원문은 저장하지 않고 마스킹된 값만 운영 콘솔에 노출합니다.
+- 연락처와 이메일 원문은 응답/운영 콘솔에 노출하지 않고 마스킹된 값만 표시합니다. `/ops/data-governance`는 원문 연락처 컬럼이 남은 저장 표면을 blocker로 표시해 저장 구조 보강 대상을 드러냅니다.
 - 추천 만족도와 구매 의향은 모델 개선 신호로 쓰되 추천 순위에는 즉시 반영하지 않습니다.
 - 베타 출시 준비도는 분석 실행, 공유 리포트 조회, 알림 연결, 피드백, 리드, 품질 차단 사유를 함께 보며 단일 지표만으로 공개 확대를 결정하지 않습니다.
 - 베타 cohort는 시나리오와 persona 기준으로 리드와 피드백을 묶고, 자동 개선 백로그는 readiness/피드백/품질 차단/학습 인사이트 신호에서 생성합니다.

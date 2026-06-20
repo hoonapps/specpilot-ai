@@ -323,6 +323,27 @@ class TrustPolicySummary(BaseModel):
     source_assessments: list[SourceTrustAssessment] = Field(default_factory=list)
 
 
+class PrivacyDataCategory(BaseModel):
+    category: str
+    label: str
+    stored_fields: list[str] = Field(default_factory=list)
+    masking: str
+    retention: str
+    user_control: str
+
+
+class PrivacyPolicySummary(BaseModel):
+    policy_version: str = "specpilot.privacy.v1"
+    headline: str
+    data_minimization: str
+    public_report_policy: str
+    contact_policy: str
+    retention_policy: str
+    user_controls: list[str] = Field(default_factory=list)
+    prohibited_data: list[str] = Field(default_factory=list)
+    data_categories: list[PrivacyDataCategory] = Field(default_factory=list)
+
+
 class PurchaseDecision(BaseModel):
     verdict: str
     label: str
@@ -1212,7 +1233,7 @@ class AlertSubscription(BaseModel):
     target_price_krw: int
     current_price_krw: int
     channels: list[str]
-    contact: str
+    contact_masked: str
     owner_label: str
     status: str
     created_at: str
@@ -1401,6 +1422,31 @@ class LaunchGateDashboard(BaseModel):
     required_actions: list[str] = Field(default_factory=list)
     checks: list[LaunchGateCheck] = Field(default_factory=list)
     metric_cards: dict[str, int | float | str] = Field(default_factory=dict)
+
+
+class DataInventoryItem(BaseModel):
+    table_name: str
+    label: str
+    record_count: int = 0
+    pii_scope: str
+    retention_days: int
+    earliest_created_at: str | None = None
+    latest_created_at: str | None = None
+    status: CheckStatus = CheckStatus.ok
+    recommendation: str
+
+
+class DataGovernanceDashboard(BaseModel):
+    workspace_id: str
+    generated_at: str
+    status: CheckStatus
+    summary: str
+    total_records: int = 0
+    raw_contact_surfaces: int = 0
+    masked_contact_surfaces: int = 0
+    retention_actions: list[str] = Field(default_factory=list)
+    deletion_controls: list[str] = Field(default_factory=list)
+    inventory: list[DataInventoryItem] = Field(default_factory=list)
 
 
 class IntegrationProviderRequest(BaseModel):
