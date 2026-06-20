@@ -1087,6 +1087,79 @@ def test_public_first_boot_setup_kit_guides_setup_and_issue_triage() -> None:
     assert any("전원/부팅/화면" in item for item in blocker_payload["issue_triage"])
 
 
+def test_public_upgrade_readiness_kit_scores_long_term_upgrade_room() -> None:
+    response = client.post(
+        "/public/upgrade-readiness-kit",
+        json={
+            "category": "desktop_pc",
+            "product_title": "Creator RTX 4070 SUPER Build",
+            "cpu_platform": "AM5",
+            "gpu_name": "RTX 4070 SUPER",
+            "ram_gb": 32,
+            "ram_slots_total": 4,
+            "ram_slots_used": 2,
+            "storage_slots_total": 3,
+            "storage_slots_used": 1,
+            "psu_watt": 750,
+            "case_form_factor": "ATX mid tower",
+            "target_years": 4,
+            "planned_upgrades": ["RAM 64GB", "SSD 2TB", "GPU 교체"],
+            "constraints": ["QHD 144Hz 유지"],
+            "budget_krw": 2_200_000,
+            "source": "pytest",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["kit_version"] == "specpilot.public_upgrade_readiness_kit.v1"
+    assert payload["category"] == "desktop_pc"
+    assert payload["priority"] in {"ok", "warning"}
+    assert payload["readiness_score"] >= 80
+    assert payload["horizon_months"] >= 42
+    assert {item["item_id"] for item in payload["readiness_items"]} >= {
+        "memory",
+        "storage",
+        "platform",
+        "power",
+        "case",
+    }
+    assert {path["path_id"] for path in payload["upgrade_paths"]} >= {
+        "memory_32gb",
+        "storage_2tb",
+        "gpu_power_headroom",
+    }
+    assert any("RAM 슬롯" in question for question in payload["seller_questions"])
+    assert "업그레이드 여지" in payload["analysis_prefill"]
+    assert "SpecPilot AI 업그레이드 수명 검수" in payload["share_copy"]
+    assert payload["primary_cta_path"] == "#analysis"
+
+    blocked = client.post(
+        "/public/upgrade-readiness-kit",
+        json={
+            "category": "laptop",
+            "product_title": "SlimBook 14",
+            "cpu_platform": "온보드 저전력",
+            "gpu_name": "integrated",
+            "ram_gb": 16,
+            "ram_slots_total": 0,
+            "ram_slots_used": 0,
+            "storage_slots_total": 1,
+            "storage_slots_used": 1,
+            "laptop_ram_upgradeable": False,
+            "laptop_storage_upgradeable": False,
+            "target_years": 4,
+            "planned_upgrades": ["RAM 32GB", "SSD 2TB"],
+            "constraints": ["가벼운 무게"],
+        },
+    )
+    assert blocked.status_code == 200
+    blocked_payload = blocked.json()
+    assert blocked_payload["priority"] == "blocker"
+    assert any(item["item_id"] == "laptop_memory" and item["status"] == "blocker" for item in blocked_payload["readiness_items"])
+    assert any("결제를 보류" in action for action in blocked_payload["next_actions"])
+
+
 def test_public_checkout_nudge_kit_turns_cart_check_into_followup_plan() -> None:
     hold = client.post(
         "/public/checkout-nudge-kit",

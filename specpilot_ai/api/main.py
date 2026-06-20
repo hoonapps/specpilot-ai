@@ -130,6 +130,7 @@ from specpilot_ai.core.models import (
     PublicSocialProofWall,
     PublicSpecRescueKit,
     PublicSpecRiskScanner,
+    PublicUpgradeReadinessKit,
     PurchaseAftercareRequest,
     PurchaseApprovalBriefRequest,
     PurchaseDecisionBoard,
@@ -186,6 +187,7 @@ from specpilot_ai.core.models import (
     TraceSpanRecord,
     TrustCenterDashboard,
     TrustPolicySummary,
+    UpgradeReadinessRequest,
     WaitlistReferral,
     WaitlistReferralDashboard,
     WaitlistReferralRequest,
@@ -230,6 +232,7 @@ from specpilot_ai.services.spec_risk_scanner import (
 )
 from specpilot_ai.services.start_concierge import build_start_concierge
 from specpilot_ai.services.trust import build_privacy_policy, build_trust_center, build_trust_policy
+from specpilot_ai.services.upgrade_readiness import build_public_upgrade_readiness_kit
 from specpilot_ai.sources.collector import SourceCollector
 from specpilot_ai.sources.url_ingestion import ingest_source_url
 from specpilot_ai.storage.sqlite_store import SpecPilotStore, pricing_plans
@@ -1304,6 +1307,16 @@ def public_first_boot_setup_kit(
     request: FirstBootSetupRequest,
 ) -> PublicFirstBootSetupKit:
     return build_public_first_boot_setup_kit(request)
+
+
+@app.post(
+    "/public/upgrade-readiness-kit",
+    response_model=PublicUpgradeReadinessKit,
+)
+def public_upgrade_readiness_kit(
+    request: UpgradeReadinessRequest,
+) -> PublicUpgradeReadinessKit:
+    return build_public_upgrade_readiness_kit(request)
 
 
 @app.post(

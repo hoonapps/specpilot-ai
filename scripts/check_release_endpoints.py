@@ -173,6 +173,21 @@ CHECKS = (
             "share_copy",
         ),
     ),
+    SmokeCheck(
+        name="public-upgrade-readiness-kit",
+        method="POST",
+        path="/public/upgrade-readiness-kit",
+        required_keys=(
+            "kit_version",
+            "priority",
+            "readiness_score",
+            "horizon_months",
+            "readiness_items",
+            "upgrade_paths",
+            "seller_questions",
+            "share_copy",
+        ),
+    ),
 )
 
 
@@ -636,6 +651,25 @@ def run_smoke() -> list[dict[str, Any]]:
                 "observed_issues": [],
                 "warranty_registered": False,
                 "bios_updated": True,
+                "source": "release_smoke",
+            }
+        if check.name == "public-upgrade-readiness-kit":
+            json_body = {
+                "category": "desktop_pc",
+                "product_title": "Creator RTX 4070 SUPER Build",
+                "cpu_platform": "AM5",
+                "gpu_name": "RTX 4070 SUPER",
+                "ram_gb": 32,
+                "ram_slots_total": 4,
+                "ram_slots_used": 2,
+                "storage_slots_total": 3,
+                "storage_slots_used": 1,
+                "psu_watt": 750,
+                "case_form_factor": "ATX mid tower",
+                "target_years": 4,
+                "planned_upgrades": ["RAM 64GB", "SSD 2TB", "GPU 교체"],
+                "constraints": ["QHD 144Hz 유지"],
+                "budget_krw": 2_200_000,
                 "source": "release_smoke",
             }
         response = client.request(check.method, check.path, headers=headers, json=json_body)

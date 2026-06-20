@@ -1945,6 +1945,66 @@ class PublicFirstBootSetupKit(BaseModel):
     next_actions: list[str] = Field(default_factory=list)
 
 
+class UpgradeReadinessRequest(BaseModel):
+    category: Category = Category.desktop_pc
+    product_title: str = "구매 후보"
+    cpu_platform: str = ""
+    gpu_name: str = ""
+    ram_gb: int = Field(default=16, ge=0, le=512)
+    ram_slots_total: int = Field(default=2, ge=0, le=16)
+    ram_slots_used: int = Field(default=2, ge=0, le=16)
+    storage_slots_total: int = Field(default=2, ge=0, le=12)
+    storage_slots_used: int = Field(default=1, ge=0, le=12)
+    psu_watt: int | None = Field(default=None, ge=0, le=3000)
+    case_form_factor: str = ""
+    laptop_ram_upgradeable: bool | None = None
+    laptop_storage_upgradeable: bool | None = None
+    target_years: int = Field(default=3, ge=1, le=8)
+    planned_upgrades: list[str] = Field(default_factory=list)
+    constraints: list[str] = Field(default_factory=list)
+    budget_krw: int | None = Field(default=None, ge=0, le=30_000_000)
+    source: str = "web"
+
+
+class UpgradeReadinessItem(BaseModel):
+    item_id: str
+    label: str
+    status: CheckStatus
+    finding: str
+    recommendation: str
+
+
+class UpgradePathOption(BaseModel):
+    path_id: str
+    label: str
+    priority: CheckStatus
+    timing: str
+    estimated_cost_krw: int
+    expected_gain: str
+    evidence_to_confirm: list[str] = Field(default_factory=list)
+
+
+class PublicUpgradeReadinessKit(BaseModel):
+    kit_version: str = "specpilot.public_upgrade_readiness_kit.v1"
+    generated_at: str
+    category: Category
+    product_title: str
+    priority: CheckStatus
+    readiness_score: int = Field(ge=0, le=100)
+    horizon_months: int = Field(ge=0, le=120)
+    headline: str
+    summary: str
+    readiness_items: list[UpgradeReadinessItem] = Field(default_factory=list)
+    upgrade_paths: list[UpgradePathOption] = Field(default_factory=list)
+    lifecycle_risks: list[str] = Field(default_factory=list)
+    seller_questions: list[str] = Field(default_factory=list)
+    analysis_prefill: str
+    share_copy: str
+    primary_cta_label: str = "업그레이드 여지로 분석 시작"
+    primary_cta_path: str = "#analysis"
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class CheckoutNudgeRequest(BaseModel):
     category: Category = Category.desktop_pc
     product_title: str = "구매 후보"
