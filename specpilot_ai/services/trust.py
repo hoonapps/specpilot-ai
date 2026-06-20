@@ -1,13 +1,17 @@
 from collections import Counter
+from datetime import UTC, datetime
 
 from specpilot_ai.core.models import (
     BenchmarkEvidence,
+    CheckStatus,
     PriceSnapshot,
     PrivacyDataCategory,
     PrivacyPolicySummary,
     ReviewInsight,
     SourceKind,
     SourceTrustAssessment,
+    TrustCenterDashboard,
+    TrustCenterGate,
     TrustGrade,
     TrustPolicySummary,
 )
@@ -168,6 +172,121 @@ def build_privacy_policy() -> PrivacyPolicySummary:
                 retention="기본 90일 보존",
                 user_control="unsubscribe 제외 정책과 채널 비활성화",
             ),
+        ],
+    )
+
+
+def build_trust_center() -> TrustCenterDashboard:
+    trust_policy = build_trust_policy()
+    privacy_policy = build_privacy_policy()
+    gates = [
+        TrustCenterGate(
+            area="recommendation_fairness",
+            label="추천 공정성",
+            status=CheckStatus.ok,
+            public_message="제휴 여부와 클릭 수는 추천 순위 계산에 직접 반영하지 않습니다.",
+            evidence=[
+                "추천 순위 기준은 목적 적합도, 실구매가, 호환성, 리뷰 신뢰도입니다.",
+                "제휴 링크가 있으면 비제휴 대안을 함께 비교하도록 정책 경고를 냅니다.",
+            ],
+            buyer_impact="사용자는 광고성 단일 링크가 아니라 대안과 근거를 함께 확인합니다.",
+            next_action=(
+                "공개 리포트의 구매 링크 영역에 제휴 고지와 "
+                "비제휴 대안 여부를 계속 표시합니다."
+            ),
+        ),
+        TrustCenterGate(
+            area="source_verification",
+            label="출처 검수",
+            status=CheckStatus.warning,
+            public_message=(
+                "낮은 신뢰도, 만료 가격, 리스크 플래그가 있는 근거는 "
+                "관리자 검수 대상으로 분리합니다."
+            ),
+            evidence=[
+                "가격 캐시 만료 시 구매 직전 재확인을 요구합니다.",
+                "신뢰도 0.8 미만 소스와 unknown provider는 검수 큐로 이동합니다.",
+            ],
+            buyer_impact="실제 결제 화면과 추천 리포트의 가격/옵션 차이를 줄입니다.",
+            next_action=(
+                "live fetch provider 정책과 검수 큐 승인 이력을 "
+                "공개 운영 증거로 더 세분화합니다."
+            ),
+        ),
+        TrustCenterGate(
+            area="privacy",
+            label="개인정보 최소화",
+            status=CheckStatus.ok,
+            public_message=(
+                "공개 표면에는 연락처 원문, 주문번호 원문, "
+                "내부 운영 메모를 노출하지 않습니다."
+            ),
+            evidence=[
+                "피드백, 베타 리드, 구독 의향, 발송 대상은 마스킹 값으로 표시합니다.",
+                "공개 리포트는 단일 share token으로만 조회합니다.",
+            ],
+            buyer_impact=(
+                "공유 리포트를 열어도 워크스페이스 내부 데이터와 "
+                "연락처가 노출되지 않습니다."
+            ),
+            next_action=(
+                "보존 초과 항목과 원문 연락처 표면은 데이터 거버넌스 "
+                "대시보드에서 계속 차단합니다."
+            ),
+        ),
+        TrustCenterGate(
+            area="human_review",
+            label="사람 검수",
+            status=CheckStatus.warning,
+            public_message="추천 근거가 불확실하면 자동 추천보다 검수 후 구매 판정을 우선합니다.",
+            evidence=[
+                "구매 판정은 점수, 목표가, 예산 초과, 호환성 차단, 출처 검수 신호를 함께 봅니다.",
+                "결제 전 검수는 최종 결제 금액, 옵션/사양, 판매자 답변, 리스크 승인을 기록합니다.",
+            ],
+            buyer_impact="조건이 불확실한 추천은 즉시 구매가 아니라 확인 필요 상태로 보입니다.",
+            next_action="검수 승인/반려 사유를 공개 리포트의 신뢰 배지와 연결합니다.",
+        ),
+    ]
+    return TrustCenterDashboard(
+        generated_at=datetime.now(UTC).isoformat(),
+        headline="추천보다 먼저 신뢰 기준을 공개합니다",
+        public_summary=(
+            "SpecPilot AI는 PC/노트북 구매 추천에서 가격, 제휴, 개인정보, "
+            "출처 검수 기준을 분리해 공개합니다."
+        ),
+        overall_status=CheckStatus.warning,
+        trust_policy=trust_policy,
+        privacy_policy=privacy_policy,
+        public_commitments=[
+            "최저가 단일 링크가 아니라 실구매가, 배송비, 쿠폰, 카드 할인, 재고를 함께 봅니다.",
+            "제휴 링크는 고지하고 비제휴 대안과 함께 노출합니다.",
+            "출처 없는 가격, 스펙, 리뷰는 추천 근거나 점수 계산에 사용하지 않습니다.",
+            "공개 공유 리포트는 토큰이 발급된 단일 리포트만 보여줍니다.",
+            "사용자가 결제 전 확인할 질문과 보류 사유를 추천 결과보다 먼저 보여줍니다.",
+        ],
+        buyer_rights=[
+            "공개 리포트에서 제휴 여부와 비제휴 대안 여부를 확인할 권리",
+            "가격 캐시 만료와 검수 필요 여부를 결제 전에 확인할 권리",
+            "공유 리포트 접근을 워크스페이스 소유자가 해제할 권리",
+            "연락 동의 없이 베타/요금제 후속 연락을 받지 않을 권리",
+        ],
+        operational_gates=gates,
+        risk_disclosures=[
+            "오픈마켓 가격과 쿠폰은 짧은 시간 안에 변동될 수 있습니다.",
+            "벤치마크는 목적별 참고 근거이며 실제 체감 성능을 보장하지 않습니다.",
+            "제휴 수익은 추천 순위에 직접 반영하지 않지만 링크 영역에는 명확히 고지됩니다.",
+            "중대한 호환성 차단 또는 출처 검수 신호가 있으면 결제 전 검수를 권장합니다.",
+        ],
+        escalation_paths=[
+            "가격/옵션 불일치: 결제 전 검수 또는 상품 페이지 근거 검수 큐로 전환",
+            "제휴 고지 누락: 구매 링크 거버넌스 blocker로 공개 전 보류",
+            "개인정보 노출 우려: 데이터 거버넌스 대시보드에서 원문 표면 차단",
+            "추천 품질 하락: 품질 회귀 모니터와 launch gate에서 공개 확대 보류",
+        ],
+        next_actions=[
+            "Trust Center를 공개 리포트와 메인 구매 화면에 연결하세요.",
+            "검수 승인/반려 이력을 신뢰 배지로 노출하세요.",
+            "제휴 링크 클릭 전 비제휴 대안 확인 UX를 강화하세요.",
         ],
     )
 

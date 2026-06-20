@@ -355,6 +355,32 @@ class PrivacyPolicySummary(BaseModel):
     data_categories: list[PrivacyDataCategory] = Field(default_factory=list)
 
 
+class TrustCenterGate(BaseModel):
+    area: str
+    label: str
+    status: CheckStatus
+    public_message: str
+    evidence: list[str] = Field(default_factory=list)
+    buyer_impact: str
+    next_action: str
+
+
+class TrustCenterDashboard(BaseModel):
+    policy_version: str = "specpilot.trust_center.v1"
+    generated_at: str
+    headline: str
+    public_summary: str
+    overall_status: CheckStatus
+    trust_policy: TrustPolicySummary
+    privacy_policy: PrivacyPolicySummary
+    public_commitments: list[str] = Field(default_factory=list)
+    buyer_rights: list[str] = Field(default_factory=list)
+    operational_gates: list[TrustCenterGate] = Field(default_factory=list)
+    risk_disclosures: list[str] = Field(default_factory=list)
+    escalation_paths: list[str] = Field(default_factory=list)
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class PurchaseDecision(BaseModel):
     verdict: str
     label: str

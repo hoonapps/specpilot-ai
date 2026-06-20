@@ -471,6 +471,32 @@ def test_privacy_policy_endpoint_exposes_retention_and_controls() -> None:
     }
 
 
+def test_trust_center_combines_public_policy_and_launch_gates() -> None:
+    response = client.get("/policy/trust-center")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["policy_version"] == "specpilot.trust_center.v1"
+    assert payload["generated_at"]
+    assert payload["headline"]
+    assert payload["overall_status"] in {"ok", "warning", "blocker"}
+    assert payload["trust_policy"]["fairness_rules"]
+    assert payload["privacy_policy"]["public_report_policy"]
+    assert len(payload["public_commitments"]) >= 4
+    assert any("제휴" in item for item in payload["public_commitments"])
+    assert any("공개 리포트" in item for item in payload["buyer_rights"])
+    assert {gate["area"] for gate in payload["operational_gates"]} >= {
+        "recommendation_fairness",
+        "source_verification",
+        "privacy",
+        "human_review",
+    }
+    assert all(gate["public_message"] for gate in payload["operational_gates"])
+    assert payload["risk_disclosures"]
+    assert payload["escalation_paths"]
+    assert payload["next_actions"]
+
+
 def test_intake_diagnosis_returns_questions_and_normalized_request() -> None:
     weak = client.post(
         "/intake/diagnose",

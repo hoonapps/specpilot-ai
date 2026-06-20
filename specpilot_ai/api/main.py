@@ -114,6 +114,7 @@ from specpilot_ai.core.models import (
     TraceEvent,
     TraceRunSummary,
     TraceSpanRecord,
+    TrustCenterDashboard,
     TrustPolicySummary,
     WaitlistReferral,
     WaitlistReferralDashboard,
@@ -125,7 +126,7 @@ from specpilot_ai.graph.product_graph import pc_purchase_graph_schema
 from specpilot_ai.services.intake import diagnose_intake
 from specpilot_ai.services.market import build_category_market_report
 from specpilot_ai.services.onboarding import purchase_onboarding_playbooks
-from specpilot_ai.services.trust import build_privacy_policy, build_trust_policy
+from specpilot_ai.services.trust import build_privacy_policy, build_trust_center, build_trust_policy
 from specpilot_ai.sources.collector import SourceCollector
 from specpilot_ai.sources.url_ingestion import ingest_source_url
 from specpilot_ai.storage.sqlite_store import SpecPilotStore, pricing_plans
@@ -241,6 +242,11 @@ def trust_policy() -> TrustPolicySummary:
 @app.get("/policy/privacy", response_model=PrivacyPolicySummary)
 def privacy_policy() -> PrivacyPolicySummary:
     return build_privacy_policy()
+
+
+@app.get("/policy/trust-center", response_model=TrustCenterDashboard)
+def trust_center() -> TrustCenterDashboard:
+    return build_trust_center()
 
 
 @app.get("/demo/scenarios")

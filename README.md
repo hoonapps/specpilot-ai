@@ -57,6 +57,7 @@ SpecPilot AI는 최저가 링크만 보여주는 쇼핑 도구가 아닙니다. 
 - Observability export outbox: trace span과 품질 감사 payload를 OpenTelemetry/LangSmith 연동 전 큐로 저장하고 dispatch/retry 상태 추적
 - 외부 연동 준비도: 가격 API, 오픈마켓, 공식 스토어, 이메일, 관측성, 제휴, scheduler provider의 mock/configured/verified/blocker 상태를 운영 게이트로 집계
 - 프라이버시/데이터 거버넌스: 공개 개인정보 정책, 워크스페이스별 데이터 인벤토리, 보존 기간, 원문 연락처 표면을 출시 게이트에 반영
+- 공개 Trust Center: 추천 공정성, 출처 검수, 개인정보 최소화, 사람 검수 기준과 구매자 권리/위험 고지를 한 응답으로 공개
 - SQLite 기반 분석 결과 저장
 - 저장 리포트 조회와 가격 알림 구독
 - 저장 리포트 공개 공유 링크 생성과 공개 리포트 페이지
@@ -85,6 +86,7 @@ SpecPilot AI는 최저가 링크만 보여주는 쇼핑 도구가 아닙니다. 
 - 관리자 검수 콘솔(`/admin`)
 - 공개 신뢰 정책 API(`/policy/trust`)
 - 공개 프라이버시 정책 API(`/policy/privacy`)
+- 공개 Trust Center API(`/policy/trust-center`)
 - Neo4j 그래프 스키마 미리보기
 - 데모 모드 기본 지원
 
@@ -227,6 +229,12 @@ curl http://127.0.0.1:8000/policy/trust
 
 ```bash
 curl http://127.0.0.1:8000/policy/privacy
+```
+
+공개 Trust Center:
+
+```bash
+curl http://127.0.0.1:8000/policy/trust-center
 ```
 
 워크스페이스별 데이터 인벤토리와 보존/마스킹 상태:
@@ -1059,6 +1067,7 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 - `/ops/integrations`: 외부 연동 provider의 category, credential 상태, rate limit, 보존 기간, 운영 증거를 워크스페이스별로 저장
 - `/ops/integration-readiness`: 가격 API, 오픈마켓, 공식 스토어, 이메일, observability, scheduler 등 공개 전 필수 연동의 mock/configured/verified/blocker 상태와 필수 액션을 집계
 - `/policy/privacy`: 저장 데이터 범위, 마스킹, 보존 기간, 사용자 제어, 금지 데이터를 공개 정책으로 반환
+- `/policy/trust-center`: 추천 공정성, 출처 검수, 개인정보 최소화, 사람 검수 게이트, 구매자 권리, 위험 고지, 다음 액션을 공개 신뢰 대시보드로 반환
 - `/ops/data-governance`: 워크스페이스별 테이블 인벤토리, 원문 연락처 표면, 마스킹 표면, 보존 초과 액션을 집계
 - `share_token`, `shared_at`, `share_views`: 저장 리포트 공개 공유 상태
 - `/reports/{report_id}/purchase-links`, `/reports/{report_id}/purchase-link-governance`, `/buy/{link_id}`: 후보별 제휴/비제휴 구매 링크, 제휴 고지, 비제휴 대안 정책 경고, 공개 클릭 redirect와 클릭 지표
