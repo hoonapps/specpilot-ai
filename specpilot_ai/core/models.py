@@ -1553,6 +1553,11 @@ class SpecRiskScannerResult(BaseModel):
     missing_evidence: list[str] = Field(default_factory=list)
     analysis_prefill: str
     share_copy: str
+    purchase_safety_brief: str
+    seller_questions: list[str] = Field(default_factory=list)
+    approval_brief: str
+    capture_checklist: list[str] = Field(default_factory=list)
+    checkout_next_step: str
     primary_cta_label: str = "검수 결과로 분석 시작"
     primary_cta_path: str = "#analysis"
     next_actions: list[str] = Field(default_factory=list)

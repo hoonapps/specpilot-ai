@@ -109,6 +109,24 @@ def scan_spec_risk(
         missing_evidence=missing_evidence,
         analysis_prefill=_analysis_prefill(request, verdict, checks),
         share_copy=_share_copy(title, verdict, blocker_count, warning_count),
+        purchase_safety_brief=_purchase_safety_brief(
+            request=request,
+            verdict=verdict,
+            blocker_count=blocker_count,
+            warning_count=warning_count,
+            missing_evidence=missing_evidence,
+        ),
+        seller_questions=_seller_questions(request, checks, missing_evidence),
+        approval_brief=_approval_brief(
+            title=title,
+            verdict=verdict,
+            readiness_score=readiness_score,
+            blocker_count=blocker_count,
+            warning_count=warning_count,
+            missing_evidence=missing_evidence,
+        ),
+        capture_checklist=_capture_checklist(verdict, missing_evidence),
+        checkout_next_step=_checkout_next_step(verdict, missing_evidence),
         next_actions=_next_actions(verdict, missing_evidence),
     )
 
@@ -343,6 +361,113 @@ def _next_actions(verdict: str, missing_evidence: list[str]) -> list[str]:
         "현재 옵션명과 최종가는 통과했지만 결제 화면 캡처를 저장하세요.",
         "공개 리포트로 추천 이유와 제외 후보를 함께 공유하세요.",
     ]
+
+
+def _purchase_safety_brief(
+    *,
+    request: SpecRiskScannerRequest,
+    verdict: str,
+    blocker_count: int,
+    warning_count: int,
+    missing_evidence: list[str],
+) -> str:
+    total = (
+        f"{request.cart_total_krw:,}원"
+        if request.cart_total_krw is not None
+        else "최종가 미입력"
+    )
+    if verdict == "hold":
+        return (
+            f"결제 보류입니다. 최종가 {total}, blocker {blocker_count}개가 있어 "
+            "옵션명·사양·예산 중 하나라도 실제 주문과 다를 가능성이 큽니다."
+        )
+    if verdict == "verify":
+        missing = ", ".join(missing_evidence[:2]) if missing_evidence else "warning 항목"
+        return (
+            f"조건부 결제 가능입니다. 최종가 {total}, warning {warning_count}개가 남아 "
+            f"{missing}를 보강한 뒤 결제하세요."
+        )
+    return (
+        f"결제 가능 후보입니다. 최종가 {total} 기준 핵심 옵션과 증거가 맞지만, "
+        "결제 화면 캡처와 주문번호는 구매 결과 회수용으로 저장하세요."
+    )
+
+
+def _seller_questions(
+    request: SpecRiskScannerRequest,
+    checks: list[SpecRiskCheck],
+    missing_evidence: list[str],
+) -> list[str]:
+    questions: list[str] = []
+    failed_labels = [check.label for check in checks if check.status == CheckStatus.blocker]
+    if failed_labels:
+        questions.append(
+            "장바구니 옵션명이 실제 출고 사양과 같은지 확인 부탁드립니다: "
+            + ", ".join(failed_labels[:4])
+        )
+    if request.cart_total_krw is None:
+        questions.append("배송비, 쿠폰, 카드 할인이 반영된 최종 결제 금액이 얼마인가요?")
+    elif request.cart_total_krw > request.budget_krw:
+        questions.append(
+            f"최종 결제 금액 {request.cart_total_krw:,}원이 예산 {request.budget_krw:,}원을 넘는데 "
+            "할인/대체 옵션이 있나요?"
+        )
+    if any("배송" in item for item in missing_evidence):
+        questions.append("오늘 결제하면 실제 출고일과 도착 예정일은 언제인가요?")
+    if any("반품" in item for item in missing_evidence):
+        questions.append("개봉 후 초기 불량, 옵션 오배송, 단순 변심의 반품/교환 조건이 어떻게 되나요?")
+    if any("AS" in item for item in missing_evidence):
+        questions.append("제조사/판매자 AS 기간과 접수 경로를 주문 전에 확인할 수 있나요?")
+    if not questions:
+        questions.append("현재 옵션명 그대로 주문하면 CPU/GPU/RAM/SSD/OS가 모두 표시 사양대로 출고되나요?")
+    return questions[:5]
+
+
+def _approval_brief(
+    *,
+    title: str,
+    verdict: str,
+    readiness_score: float,
+    blocker_count: int,
+    warning_count: int,
+    missing_evidence: list[str],
+) -> str:
+    label = {"ready": "결제 가능", "verify": "확인 후 결제", "hold": "결제 보류"}[verdict]
+    evidence = (
+        f"누락 증거: {', '.join(missing_evidence[:3])}"
+        if missing_evidence
+        else "필수 증거 확보"
+    )
+    return (
+        f"{title} 검수 결과는 {label}입니다. 준비도 {round(readiness_score)}점, "
+        f"blocker {blocker_count}개, warning {warning_count}개, {evidence}. "
+        "승인 전에는 판매 페이지 제목, 장바구니 옵션명, 최종 결제 금액 캡처를 함께 확인하세요."
+    )
+
+
+def _capture_checklist(verdict: str, missing_evidence: list[str]) -> list[str]:
+    base = [
+        "판매 페이지 제목과 모델명",
+        "장바구니 옵션명 전체",
+        "배송비·쿠폰·카드 할인이 반영된 최종 결제 금액",
+    ]
+    if verdict == "hold":
+        base.append("판매자 답변 또는 대체 후보 비교 리포트")
+    if missing_evidence:
+        base.extend(missing_evidence)
+    else:
+        base.extend(["배송 예정일", "반품/교환 조건", "AS 또는 보증 조건"])
+    return list(dict.fromkeys(base))[:7]
+
+
+def _checkout_next_step(verdict: str, missing_evidence: list[str]) -> str:
+    if verdict == "hold":
+        return "결제하지 말고 blocker 항목을 판매자에게 확인하거나 대체 후보 분석으로 이동하세요."
+    if missing_evidence:
+        return "누락 증거를 캡처한 뒤 같은 장바구니 문구로 다시 검수하세요."
+    if verdict == "verify":
+        return "warning 항목을 승인 채널에 공유하고 확인 답변을 받은 뒤 결제하세요."
+    return "결제 화면 캡처를 저장하고 구매 결과를 리포트에 회수할 준비를 하세요."
 
 
 def _category_label(category: Category) -> str:

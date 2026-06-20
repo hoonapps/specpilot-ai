@@ -55,7 +55,7 @@ SpecPilot AI는 최저가 링크만 보여주는 쇼핑 도구가 아닙니다. 
 - 공개 구매 성향 진단 퀴즈: 30초 질문으로 구매 persona, 추천 카테고리/예산, 분석 prefill, 체크리스트 경로, 공유 문구를 제공
 - 공개 구매 실패 비용 계산기: 예산, 수량, 긴급도, 위험 유형을 받아 잘못 산 컴퓨터의 숨은 손실, 방지 플랜, 분석 prefill을 금액으로 제시
 - 공개 구매 챌린지 공유 키트: 성향 진단, 실패 비용 계산, 체크리스트를 채널별 공유 문구와 3단계 챌린지로 묶어 리포트 생성 전 확산 루프를 제공
-- 공개 옵션/사양 빠른 검수기: 판매 페이지 옵션명, 장바구니 문구, 최종 결제 금액을 붙여 넣으면 예산 초과, 사양 불일치, 증거 누락을 결제 전 blocker/warning으로 판정
+- 공개 옵션/사양 빠른 검수기: 판매 페이지 옵션명, 장바구니 문구, 최종 결제 금액을 붙여 넣으면 예산 초과, 사양 불일치, 증거 누락을 결제 전 blocker/warning으로 판정하고 구매 세이프티 브리프, 판매자 확인 질문, 승인/공유 요약, 캡처 체크리스트를 반환
 - 공개 후보 비교 스냅샷: 데스크톱/노트북 후보 5개를 가격, 목적 적합도, 리뷰 신뢰, 구매 안정성으로 정렬하고 예산/성능/안전 우선 대안 시나리오를 제공
 - 공개 구매 타이밍 윈도우: 후보별 현재가, 목표가, 적정가 밴드, 변동 리스크, 결제 트리거를 공개 화면에서 즉시 결제/가격 대기로 분리
 - 첫 구매 진단 콘시어지: 입력 조건을 즉시 진단해 맞춤 온보딩 플레이북, 누락 질문, 분석/공유/검수 다음 행동으로 연결
@@ -247,7 +247,7 @@ curl -X POST http://127.0.0.1:8000/public/mistake-cost-calculator/result \
 curl "http://127.0.0.1:8000/public/buyer-challenge-kit?category=desktop_pc&budget_krw=2200000&persona=creator_gamer"
 ```
 
-공개 옵션/사양 빠른 검수기는 결제 직전 판매 페이지 제목, 장바구니 옵션명, 최종 결제 금액, 기대 사양을 대조해 결제 가능/확인 필요/보류 판정을 반환합니다.
+공개 옵션/사양 빠른 검수기는 결제 직전 판매 페이지 제목, 장바구니 옵션명, 최종 결제 금액, 기대 사양을 대조해 결제 가능/확인 필요/보류 판정을 반환합니다. 결과에는 구매 세이프티 브리프, 판매자에게 물어볼 질문, 승인 채널에 붙여 넣을 요약, 결제 전 캡처 체크리스트, 다음 행동이 함께 포함됩니다.
 
 ```bash
 curl http://127.0.0.1:8000/public/spec-risk-scanner
@@ -1463,7 +1463,7 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 - `/public/buyer-persona-quiz`, `/public/buyer-persona-quiz/result`: 공개 30초 구매 성향 진단 질문과 persona별 추천 카테고리/예산, 분석 prefill, 체크리스트 경로, 공유 문구 조회
 - `/public/mistake-cost-calculator`, `/public/mistake-cost-calculator/result`: 공개 구매 실패 비용 계산 질문과 예산/수량/긴급도별 예상 손실, 방지 플랜, 분석 prefill, 공유 문구 조회
 - `/public/buyer-challenge-kit`: 구매 성향, 실패 비용, 체크리스트를 3단계 공유 챌린지와 카카오톡/커뮤니티/팀 채널별 복사 문구로 패키징
-- `/public/spec-risk-scanner`, `/public/spec-risk-scanner/result`: 공개 옵션/사양 빠른 검수 메타와 결제 전 예산 초과, CPU/GPU/RAM/SSD/OS 불일치, 배송/반품/AS 증거 누락 판정 조회
+- `/public/spec-risk-scanner`, `/public/spec-risk-scanner/result`: 공개 옵션/사양 빠른 검수 메타와 결제 전 예산 초과, CPU/GPU/RAM/SSD/OS 불일치, 배송/반품/AS 증거 누락 판정, 구매 세이프티 브리프, 판매자 질문, 승인 요약, 캡처 체크리스트 조회
 - `/public/candidate-compare`: 공개 후보 5개 비교표, 비교 축별 승자, 예산/성능/안전 우선 대안 시나리오, 분석 prefill, 공유 문구 조회
 - `/public/deal-timing-window`: 공개 후보별 현재가, 목표가, 적정가 밴드, 재고/쿠폰 변동 리스크, 결제 트리거, 목표가 알림용 공유 문구 조회
 - `/reports/completion-templates`, `/reports/completion-recipient-groups`, `/reports/completion-preview`, `/reports/completion-batches`, `/reports/completion-engagement`, `/reports/completion-provider-events`, `/reports/completion-deliveries/provider-webhooks`, `/t/o/{tracking_token}.png`, `/t/c/{tracking_token}`: 완료 리포트 템플릿, 수신자 그룹, unsubscribe 제외, 발송 전 렌더링 미리보기, batch와 개별 delivery 성공/실패/재시도/열람/클릭/반송/신고/수신 제외 상태, provider 삽입용 공개 추적 픽셀/클릭 리다이렉트

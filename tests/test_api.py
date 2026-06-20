@@ -560,6 +560,11 @@ def test_public_spec_risk_scanner_checks_checkout_options_before_purchase() -> N
     }
     assert "Creator RTX 4070 SUPER Build" in ok_payload["analysis_prefill"]
     assert "SpecPilot AI 옵션/사양 빠른 검수 결과" in ok_payload["share_copy"]
+    assert "결제 가능" in ok_payload["purchase_safety_brief"]
+    assert ok_payload["seller_questions"]
+    assert "준비도" in ok_payload["approval_brief"]
+    assert "장바구니 옵션명 전체" in ok_payload["capture_checklist"]
+    assert "결제" in ok_payload["checkout_next_step"]
 
     hold_result = client.post(
         "/public/spec-risk-scanner/result",
@@ -583,6 +588,10 @@ def test_public_spec_risk_scanner_checks_checkout_options_before_purchase() -> N
     assert hold_payload["verdict"] == "hold"
     assert hold_payload["blocker_count"] >= 4
     assert hold_payload["warning_count"] >= 1
+    assert "결제 보류" in hold_payload["purchase_safety_brief"]
+    assert "결제하지 말고" in hold_payload["checkout_next_step"]
+    assert any("판매자" in item for item in hold_payload["capture_checklist"])
+    assert any("실제 출고 사양" in item for item in hold_payload["seller_questions"])
     assert hold_payload["readiness_score"] < 50
     assert "결제 보류" in hold_payload["headline"]
     assert "배송 예정일" in hold_payload["missing_evidence"]
