@@ -468,6 +468,41 @@ def test_public_mistake_cost_calculator_quantifies_launch_risk() -> None:
     assert payload["next_actions"]
 
 
+def test_public_buyer_challenge_kit_packages_shareable_launch_loop() -> None:
+    response = client.get(
+        "/public/buyer-challenge-kit"
+        "?category=desktop_pc&budget_krw=2200000&persona=creator_gamer"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["kit_version"] == "specpilot.public_buyer_challenge_kit.v1"
+    assert payload["category"] == "desktop_pc"
+    assert payload["budget_krw"] == 2_200_000
+    assert payload["persona"] == "creator_gamer"
+    assert "구매 실패 방지 챌린지" in payload["challenge_title"]
+    assert len(payload["challenge_steps"]) == 3
+    assert payload["analysis_prefill"].startswith("데스크톱 PC를 2,200,000원")
+    assert payload["checklist_path"].startswith("/public/buyer-checklist")
+    assert "persona=creator_gamer" in payload["checklist_path"]
+    assert payload["mistake_cost_path"].startswith(
+        "/public/mistake-cost-calculator/result"
+    )
+    assert payload["persona_quiz_path"] == "/public/buyer-persona-quiz"
+    assert "#SpecPilotAI" in payload["hashtags"]
+    assert "#PC견적" in payload["hashtags"]
+    assert payload["proof_points"]
+
+    variants = {variant["channel"]: variant for variant in payload["share_variants"]}
+    assert {"kakao", "community", "team"} <= set(variants)
+    assert "SpecPilot AI" in variants["community"]["copy_text"]
+    assert "2,200,000원" in variants["community"]["copy_text"]
+    assert "데스크톱 PC" in variants["kakao"]["copy_text"]
+    assert "승인 전 조건 검토 요청" in variants["team"]["copy_text"]
+    assert payload["primary_cta_path"] == "#analysis"
+    assert payload["next_actions"]
+
+
 def test_growth_funnel_tracks_product_reaction_events() -> None:
     workspace = {"X-SpecPilot-Key": f"pytest-growth-{uuid4().hex}"}
     other_workspace = {"X-SpecPilot-Key": f"pytest-growth-other-{uuid4().hex}"}

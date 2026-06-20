@@ -87,6 +87,7 @@ from specpilot_ai.core.models import (
     PrivacyPolicySummary,
     ProductBrief,
     PublicAcquisitionHub,
+    PublicBuyerChallengeKit,
     PublicBuyerChecklist,
     PublicBuyerPersonaQuiz,
     PublicCategoryMarketReport,
@@ -154,6 +155,7 @@ from specpilot_ai.core.models import (
 )
 from specpilot_ai.graph.neo4j_client import Neo4jRepository
 from specpilot_ai.graph.product_graph import pc_purchase_graph_schema
+from specpilot_ai.services.buyer_challenge import build_public_buyer_challenge_kit
 from specpilot_ai.services.buyer_checklist import build_public_buyer_checklist
 from specpilot_ai.services.buyer_persona_quiz import (
     build_public_buyer_persona_quiz,
@@ -1144,6 +1146,19 @@ def public_mistake_cost_calculator_result(
     request: MistakeCostCalculatorRequest,
 ) -> MistakeCostCalculatorResult:
     return estimate_mistake_cost(request)
+
+
+@app.get("/public/buyer-challenge-kit", response_model=PublicBuyerChallengeKit)
+def public_buyer_challenge_kit(
+    category: Category | None = None,
+    budget_krw: int | None = None,
+    persona: str = "creator_gamer",
+) -> PublicBuyerChallengeKit:
+    return build_public_buyer_challenge_kit(
+        category=category,
+        budget_krw=budget_krw,
+        persona=persona,
+    )
 
 
 @app.get("/public/proof-hub", response_model=PublicProofHub)

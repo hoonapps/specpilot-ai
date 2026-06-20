@@ -1296,6 +1296,44 @@ class MistakeCostCalculatorResult(BaseModel):
     next_actions: list[str] = Field(default_factory=list)
 
 
+class BuyerChallengeStep(BaseModel):
+    step_id: str
+    title: str
+    action: str
+    proof: str
+
+
+class BuyerChallengeShareVariant(BaseModel):
+    channel: str
+    label: str
+    headline: str
+    body: str
+    cta: str
+    copy_text: str
+
+
+class PublicBuyerChallengeKit(BaseModel):
+    kit_version: str = "specpilot.public_buyer_challenge_kit.v1"
+    generated_at: str
+    category: Category
+    budget_krw: int
+    persona: str
+    headline: str
+    summary: str
+    challenge_title: str
+    challenge_steps: list[BuyerChallengeStep] = Field(default_factory=list)
+    analysis_prefill: str
+    checklist_path: str
+    mistake_cost_path: str
+    persona_quiz_path: str = "/public/buyer-persona-quiz"
+    hashtags: list[str] = Field(default_factory=list)
+    proof_points: list[str] = Field(default_factory=list)
+    share_variants: list[BuyerChallengeShareVariant] = Field(default_factory=list)
+    primary_cta_label: str = "챌린지 조건으로 분석 시작"
+    primary_cta_path: str = "#analysis"
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class StartConciergeMilestone(BaseModel):
     step: str
     title: str
