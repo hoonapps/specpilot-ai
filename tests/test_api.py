@@ -1022,6 +1022,71 @@ def test_public_purchase_aftercare_kit_closes_return_and_outcome_loop() -> None:
     assert any("반품 또는 교환" in action for action in defect_payload["next_actions"])
 
 
+def test_public_first_boot_setup_kit_guides_setup_and_issue_triage() -> None:
+    response = client.post(
+        "/public/first-boot-setup-kit",
+        json={
+            "category": "desktop_pc",
+            "product_title": "Creator RTX 4070 SUPER Build",
+            "os_name": "Windows 11 Pro",
+            "primary_purpose": "QHD 영상 편집",
+            "monitor_resolution": "2560x1440 144Hz",
+            "connection_type": "DisplayPort",
+            "peripherals": ["모니터", "키보드", "마우스"],
+            "missing_drivers": ["graphics"],
+            "observed_issues": [],
+            "warranty_registered": False,
+            "bios_updated": True,
+            "source": "pytest",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["kit_version"] == "specpilot.public_first_boot_setup_kit.v1"
+    assert payload["category"] == "desktop_pc"
+    assert payload["priority"] == "warning"
+    assert payload["setup_score"] < 100
+    assert {task["task_id"] for task in payload["first_boot_checklist"]} >= {
+        "power_display",
+        "os_activation",
+        "display_profile",
+        "bios_memory_storage",
+    }
+    assert any(task["task_id"] == "graphics" and task["status"] == "warning" for task in payload["driver_checklist"])
+    assert any("CPU/GPU/RAM/SSD" in item for item in payload["benchmark_plan"])
+    assert any("보증 등록" in item for item in payload["warranty_actions"])
+    assert {message["channel"] for message in payload["messages"]} == {
+        "self",
+        "seller",
+        "team",
+    }
+    assert "첫 부팅 세팅" in payload["analysis_prefill"]
+    assert "SpecPilot AI 첫 부팅 세팅 검수" in payload["share_copy"]
+    assert payload["primary_cta_path"] == "#analysis"
+
+    blocker = client.post(
+        "/public/first-boot-setup-kit",
+        json={
+            "category": "laptop",
+            "product_title": "CreatorBook 16",
+            "os_name": "Windows 11 Home",
+            "primary_purpose": "외근 영상 편집",
+            "monitor_resolution": "2560x1600",
+            "connection_type": "USB-C",
+            "missing_drivers": ["network", "vendor_utility"],
+            "observed_issues": ["부팅 중 꺼짐", "화면 깜빡임"],
+            "warranty_registered": True,
+            "bios_updated": False,
+        },
+    )
+    assert blocker.status_code == 200
+    blocker_payload = blocker.json()
+    assert blocker_payload["priority"] == "blocker"
+    assert any("반품 또는 AS" in action for action in blocker_payload["next_actions"])
+    assert any("전원/부팅/화면" in item for item in blocker_payload["issue_triage"])
+
+
 def test_public_checkout_nudge_kit_turns_cart_check_into_followup_plan() -> None:
     hold = client.post(
         "/public/checkout-nudge-kit",

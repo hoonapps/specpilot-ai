@@ -158,6 +158,21 @@ CHECKS = (
             "share_copy",
         ),
     ),
+    SmokeCheck(
+        name="public-first-boot-setup-kit",
+        method="POST",
+        path="/public/first-boot-setup-kit",
+        required_keys=(
+            "kit_version",
+            "priority",
+            "setup_score",
+            "first_boot_checklist",
+            "driver_checklist",
+            "benchmark_plan",
+            "messages",
+            "share_copy",
+        ),
+    ),
 )
 
 
@@ -606,6 +621,21 @@ def run_smoke() -> list[dict[str, Any]]:
                 "return_window_days": 7,
                 "warranty_months": 12,
                 "issues": [],
+                "source": "release_smoke",
+            }
+        if check.name == "public-first-boot-setup-kit":
+            json_body = {
+                "category": "desktop_pc",
+                "product_title": "Creator RTX 4070 SUPER Build",
+                "os_name": "Windows 11",
+                "primary_purpose": "QHD 영상 편집",
+                "monitor_resolution": "2560x1440 144Hz",
+                "connection_type": "DisplayPort",
+                "peripherals": ["모니터", "키보드", "마우스"],
+                "missing_drivers": ["graphics"],
+                "observed_issues": [],
+                "warranty_registered": False,
+                "bios_updated": True,
                 "source": "release_smoke",
             }
         response = client.request(check.method, check.path, headers=headers, json=json_body)

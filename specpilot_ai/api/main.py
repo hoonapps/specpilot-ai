@@ -56,6 +56,7 @@ from specpilot_ai.core.models import (
     DemoScenarioGallery,
     FeedbackRecord,
     FeedbackRequest,
+    FirstBootSetupRequest,
     GrowthEventRecord,
     GrowthEventRequest,
     GrowthFunnelDashboard,
@@ -105,6 +106,7 @@ from specpilot_ai.core.models import (
     PublicCheckoutNudgeKit,
     PublicConversionBoard,
     PublicDealTimingWindow,
+    PublicFirstBootSetupKit,
     PublicLaunchActionRouter,
     PublicLaunchObjectionKit,
     PublicLaunchPreflightDashboard,
@@ -201,6 +203,7 @@ from specpilot_ai.services.buyer_trust import build_public_buyer_trust_kit
 from specpilot_ai.services.candidate_compare import build_public_candidate_compare
 from specpilot_ai.services.deal_timing import build_public_deal_timing_window
 from specpilot_ai.services.demo_gallery import build_demo_scenario_gallery
+from specpilot_ai.services.first_boot_setup import build_public_first_boot_setup_kit
 from specpilot_ai.services.intake import diagnose_intake
 from specpilot_ai.services.launch_campaign import (
     build_launch_campaign_kit,
@@ -1291,6 +1294,16 @@ def public_purchase_aftercare_kit(
     request: PurchaseAftercareRequest,
 ) -> PublicPurchaseAftercareKit:
     return build_public_purchase_aftercare_kit(request)
+
+
+@app.post(
+    "/public/first-boot-setup-kit",
+    response_model=PublicFirstBootSetupKit,
+)
+def public_first_boot_setup_kit(
+    request: FirstBootSetupRequest,
+) -> PublicFirstBootSetupKit:
+    return build_public_first_boot_setup_kit(request)
 
 
 @app.post(

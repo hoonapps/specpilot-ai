@@ -1893,6 +1893,58 @@ class PublicPurchaseAftercareKit(BaseModel):
     next_actions: list[str] = Field(default_factory=list)
 
 
+class FirstBootSetupRequest(BaseModel):
+    category: Category = Category.desktop_pc
+    product_title: str = "새 컴퓨터"
+    os_name: str = "Windows 11"
+    primary_purpose: str = "일상/작업"
+    monitor_resolution: str = ""
+    connection_type: str = ""
+    peripherals: list[str] = Field(default_factory=list)
+    missing_drivers: list[str] = Field(default_factory=list)
+    observed_issues: list[str] = Field(default_factory=list)
+    warranty_registered: bool = False
+    bios_updated: bool = False
+    source: str = "web"
+
+
+class FirstBootSetupTask(BaseModel):
+    task_id: str
+    label: str
+    status: CheckStatus
+    instruction: str
+    evidence: str
+
+
+class FirstBootMessage(BaseModel):
+    channel: str
+    label: str
+    copy_text: str
+    cta_label: str
+
+
+class PublicFirstBootSetupKit(BaseModel):
+    kit_version: str = "specpilot.public_first_boot_setup_kit.v1"
+    generated_at: str
+    category: Category
+    product_title: str
+    priority: CheckStatus
+    setup_score: int = Field(ge=0, le=100)
+    headline: str
+    summary: str
+    first_boot_checklist: list[FirstBootSetupTask] = Field(default_factory=list)
+    driver_checklist: list[FirstBootSetupTask] = Field(default_factory=list)
+    benchmark_plan: list[str] = Field(default_factory=list)
+    issue_triage: list[str] = Field(default_factory=list)
+    warranty_actions: list[str] = Field(default_factory=list)
+    messages: list[FirstBootMessage] = Field(default_factory=list)
+    analysis_prefill: str
+    share_copy: str
+    primary_cta_label: str = "세팅 결과로 분석 시작"
+    primary_cta_path: str = "#analysis"
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class CheckoutNudgeRequest(BaseModel):
     category: Category = Category.desktop_pc
     product_title: str = "구매 후보"
