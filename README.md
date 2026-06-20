@@ -48,6 +48,7 @@ SpecPilot AI는 최저가 링크만 보여주는 쇼핑 도구가 아닙니다. 
 - 구매 의사결정 보드: 저장 리포트 여러 건의 결제 가능, 가격 대기, 검수 차단, 링크/결과 미기록 상태와 다음 액션을 한 화면에서 집계
 - 학습 인사이트: 구매 결과, 결제 전 검수 차단, 사용자 피드백을 제품별 전환/반품/가격 신호로 묶어 개선 액션 추천
 - 월간 카테고리 리포트: 데스크톱 PC/노트북 후보를 가격대, 추천 역할, 리스크, 워크스페이스 구매 신호로 묶어 공개 콘텐츠와 수익화 검증에 사용
+- 성장 퍼널: 분석 결과 조회, 추천 카드 클릭, 대안 시나리오 클릭, 공유/알림/구독 CTA를 이벤트로 저장하고 출시 게이트에 반응 지표로 반영
 - 출처 신뢰도, 캐시 만료 기준, 제휴 고지 정책
 - Agent trace 조회와 SQLite span 저장
 - Observability export outbox: trace span과 품질 감사 payload를 OpenTelemetry/LangSmith 연동 전 큐로 저장하고 dispatch/retry 상태 추적
@@ -776,6 +777,26 @@ curl http://127.0.0.1:8000/ops/metrics \
   -H "X-SpecPilot-Key: $SPECPILOT_KEY"
 ```
 
+성장 퍼널 이벤트 저장과 대시보드:
+
+```bash
+curl -X POST http://127.0.0.1:8000/growth/events \
+  -H "Content-Type: application/json" \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY" \
+  -d '{
+    "event_type": "recommendation_click",
+    "trace_id": "trace_xxx",
+    "product_id": "desktop-001",
+    "surface": "recommendation-card",
+    "label": "TOP 1 추천 카드"
+  }'
+```
+
+```bash
+curl http://127.0.0.1:8000/growth/funnel \
+  -H "X-SpecPilot-Key: $SPECPILOT_KEY"
+```
+
 분석 품질/비용 감사:
 
 ```bash
@@ -1013,15 +1034,17 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 - `/reports/completion-templates`, `/reports/completion-recipient-groups`, `/reports/completion-preview`, `/reports/completion-batches`, `/reports/completion-engagement`, `/reports/completion-provider-events`, `/reports/completion-deliveries/provider-webhooks`, `/t/o/{tracking_token}.png`, `/t/c/{tracking_token}`: 완료 리포트 템플릿, 수신자 그룹, unsubscribe 제외, 발송 전 렌더링 미리보기, batch와 개별 delivery 성공/실패/재시도/열람/클릭/반송/신고/수신 제외 상태, provider 삽입용 공개 추적 픽셀/클릭 리다이렉트
 - `purchase_outcomes`, `completed_purchase_outcomes`, `purchase_conversion_rate`, `average_final_price_delta_krw`, `purchase_outcome_value_krw`: 실제 구매 결과와 최종 결제 금액 차이를 보는 운영 지표
 - `/ops/learning-insights`: 실제 구매 결과, 결제 전 검수 차단, 만족도 피드백을 제품별 전환율, 반품률, 가격 차이, 개선 액션으로 집계
-- `/beta/launch-gate`: readiness, 품질 회귀, 학습 인사이트, 백로그 SLA, 전환/발송/외부 연동/데이터 거버넌스 운영 상태를 공개 go/no-go 판정과 필수 액션으로 집계
+- `/growth/events`, `/growth/funnel`: 추천 카드, 대안 시나리오, 공유 리포트, 가격 알림, 요금제 CTA 반응을 저장하고 단계별 전환율과 다음 액션을 집계
+- `/beta/launch-gate`: readiness, 품질 회귀, 학습 인사이트, 백로그 SLA, 전환/성장/발송/외부 연동/데이터 거버넌스 운영 상태를 공개 go/no-go 판정과 필수 액션으로 집계
 - `feedback_count`, `average_satisfaction`, `purchase_intent_rate`: 추천 결과가 실제 구매 판단으로 이어지는지 보는 운영 지표
 - `beta_leads`: 베타 신청 리드 수
 - `alert_channels`, `alert_delivery_attempts`, `sent_alert_deliveries`, `failed_alert_deliveries`: 알림 발송 채널과 dispatch 운영 지표
+- `growth_events`, `recommendation_card_clicks`, `alternative_scenario_clicks`, `share_cta_clicks`, `alert_cta_clicks`, `subscription_cta_clicks`: 공개 후 제품 반응과 CTA 전환을 보는 성장 퍼널 지표
 - `trace_spans`: 별도 저장된 LangGraph 단계 span 수
 
 ## 로컬 저장소
 
-분석 실행, trace span, observability export outbox, 외부 연동 준비도, 데이터 거버넌스 인벤토리, 저장 리포트, 공유 토큰, 완료 리포트 템플릿/수신자 그룹/batch/delivery/engagement/provider event, 가격 알림 구독, 알림 채널, 발송 큐, 발송 시도, 사용자 피드백, 베타 리드, 출시 게이트 판단 근거는 기본적으로 SQLite에 저장된 운영 신호에서 계산됩니다.
+분석 실행, trace span, observability export outbox, 외부 연동 준비도, 데이터 거버넌스 인벤토리, 저장 리포트, 공유 토큰, 완료 리포트 템플릿/수신자 그룹/batch/delivery/engagement/provider event, 가격 알림 구독, 알림 채널, 발송 큐, 발송 시도, 성장 퍼널 이벤트, 사용자 피드백, 베타 리드, 출시 게이트 판단 근거는 기본적으로 SQLite에 저장된 운영 신호에서 계산됩니다.
 저장 리포트, 공유 토큰, 외부 연동 provider, 완료 리포트 템플릿/수신자 그룹/batch/engagement/provider event, 알림, 발송 채널, 피드백, 리드는 `X-SpecPilot-Key`에서 계산된 워크스페이스 단위로 분리됩니다. 공개 리포트는 공유 토큰이 발급된 단일 리포트만 조회할 수 있습니다.
 
 기본 경로:

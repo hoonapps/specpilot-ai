@@ -51,6 +51,9 @@ from specpilot_ai.core.models import (
     DataGovernanceDashboard,
     FeedbackRecord,
     FeedbackRequest,
+    GrowthEventRecord,
+    GrowthEventRequest,
+    GrowthFunnelDashboard,
     IntakeDiagnosisRequest,
     IntakeDiagnosisResponse,
     IntegrationProvider,
@@ -1108,6 +1111,30 @@ def list_feedback(
     workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
 ) -> list[FeedbackRecord]:
     return _store().list_feedback_for_workspace(workspace.workspace_id, limit=limit)
+
+
+@app.post("/growth/events", response_model=GrowthEventRecord)
+def create_growth_event(
+    request: GrowthEventRequest,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> GrowthEventRecord:
+    return _store().create_growth_event_for_workspace(workspace.workspace_id, request)
+
+
+@app.get("/growth/events", response_model=list[GrowthEventRecord])
+def list_growth_events(
+    limit: int = 50,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> list[GrowthEventRecord]:
+    return _store().list_growth_events_for_workspace(workspace.workspace_id, limit=limit)
+
+
+@app.get("/growth/funnel", response_model=GrowthFunnelDashboard)
+def growth_funnel(
+    limit: int = 20,
+    workspace: WorkspaceContext = WORKSPACE_DEPENDENCY,
+) -> GrowthFunnelDashboard:
+    return _store().growth_funnel_for_workspace(workspace.workspace_id, limit=limit)
 
 
 @app.post("/beta/leads", response_model=BetaLead)

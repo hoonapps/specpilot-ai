@@ -236,6 +236,101 @@ def test_category_market_report_exposes_monthly_picks_and_risks() -> None:
     }
 
 
+def test_growth_funnel_tracks_product_reaction_events() -> None:
+    workspace = {"X-SpecPilot-Key": f"pytest-growth-{uuid4().hex}"}
+    other_workspace = {"X-SpecPilot-Key": f"pytest-growth-other-{uuid4().hex}"}
+
+    analysis = client.post(
+        "/analyze",
+        headers=workspace,
+        json={
+            "query": "QHD 게임과 영상 편집용 PC를 220만원 안에서 추천해줘",
+            "category": "desktop_pc",
+            "budget_krw": 2_200_000,
+            "purpose": "QHD gaming, Premiere Pro",
+            "must_haves": ["RTX 4070급", "32GB RAM", "업그레이드"],
+        },
+    ).json()
+    trace_id = analysis["graph_trace_id"]
+    product_id = analysis["report"]["top_recommendations"][0]["product"]["id"]
+    saved = client.post(
+        "/reports/save",
+        headers=workspace,
+        json={
+            "trace_id": trace_id,
+            "title": "성장 퍼널 테스트 리포트",
+            "owner_label": "pytest-growth",
+        },
+    ).json()
+
+    event_types = [
+        "analysis_view",
+        "recommendation_click",
+        "recommendation_click",
+        "alternative_click",
+        "share_cta",
+        "alert_cta",
+        "subscription_cta",
+    ]
+    created_ids: list[str] = []
+    for event_type in event_types:
+        response = client.post(
+            "/growth/events",
+            headers=workspace,
+            json={
+                "event_type": event_type,
+                "trace_id": trace_id,
+                "report_id": saved["report_id"],
+                "product_id": product_id,
+                "source": "pytest",
+                "surface": "result",
+                "label": f"{event_type} button",
+                "metadata": {"rank": 1, "category": "desktop_pc"},
+            },
+        )
+        assert response.status_code == 200
+        created_ids.append(response.json()["event_id"])
+
+    events = client.get("/growth/events", headers=workspace)
+    assert events.status_code == 200
+    event_payload = events.json()
+    assert {item["event_id"] for item in event_payload} >= set(created_ids)
+    assert event_payload[0]["workspace_id"].startswith("workspace_")
+    assert event_payload[0]["metadata"]["category"] == "desktop_pc"
+
+    funnel = client.get("/growth/funnel", headers=workspace)
+    assert funnel.status_code == 200
+    funnel_payload = funnel.json()
+    assert funnel_payload["total_events"] == len(event_types)
+    assert funnel_payload["unique_traces"] == 1
+    assert funnel_payload["activation_rate"] >= 1
+    assert funnel_payload["share_rate"] >= 1
+    assert funnel_payload["paid_intent_rate"] >= 1
+    assert any(step["key"] == "recommendation_click" for step in funnel_payload["steps"])
+    assert "result" in funnel_payload["top_surfaces"][0]
+
+    metrics = client.get("/ops/metrics", headers=workspace)
+    assert metrics.status_code == 200
+    metrics_payload = metrics.json()
+    assert metrics_payload["growth_events"] == len(event_types)
+    assert metrics_payload["recommendation_card_clicks"] == 2
+    assert metrics_payload["alternative_scenario_clicks"] == 1
+    assert metrics_payload["share_cta_clicks"] == 1
+    assert metrics_payload["alert_cta_clicks"] == 1
+    assert metrics_payload["subscription_cta_clicks"] == 1
+
+    launch_gate = client.get("/beta/launch-gate", headers=workspace)
+    assert launch_gate.status_code == 200
+    launch_payload = launch_gate.json()
+    assert "growth" in {check["area"] for check in launch_payload["checks"]}
+    assert launch_payload["metric_cards"]["growth_events"] == len(event_types)
+    assert launch_payload["metric_cards"]["recommendation_click_rate"] >= 1
+
+    isolated = client.get("/growth/funnel", headers=other_workspace)
+    assert isolated.status_code == 200
+    assert isolated.json()["total_events"] == 0
+
+
 def test_trust_policy_endpoint_exposes_cache_and_fairness_rules() -> None:
     response = client.get("/policy/trust")
 

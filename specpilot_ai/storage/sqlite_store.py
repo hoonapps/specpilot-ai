@@ -50,6 +50,11 @@ from specpilot_ai.core.models import (
     DataInventoryItem,
     FeedbackRecord,
     FeedbackRequest,
+    GrowthEventRecord,
+    GrowthEventRequest,
+    GrowthEventType,
+    GrowthFunnelDashboard,
+    GrowthFunnelStep,
     IntegrationCategory,
     IntegrationProvider,
     IntegrationProviderRequest,
@@ -194,6 +199,13 @@ DATA_INVENTORY_SPECS = [
         "label": "요금제 관심 등록",
         "pii_scope": "masked_contact",
         "retention_days": 365,
+        "created_column": "created_at",
+    },
+    {
+        "table_name": "growth_events",
+        "label": "제품 성장 퍼널 이벤트",
+        "pii_scope": "workspace_scoped",
+        "retention_days": 180,
         "created_column": "created_at",
     },
     {
@@ -2491,6 +2503,188 @@ class SpecPilotStore:
             ).fetchall()
         return [_feedback_from_row(row) for row in rows]
 
+    def create_growth_event_for_workspace(
+        self,
+        workspace_id: str,
+        request: GrowthEventRequest,
+    ) -> GrowthEventRecord:
+        now = _now()
+        event = GrowthEventRecord(
+            event_id=f"growth_{uuid4().hex[:12]}",
+            workspace_id=workspace_id,
+            event_type=request.event_type,
+            trace_id=request.trace_id,
+            report_id=request.report_id,
+            product_id=request.product_id,
+            source=request.source[:80],
+            surface=request.surface[:80],
+            label=request.label[:160],
+            metadata=request.metadata,
+            created_at=now,
+        )
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO growth_events (
+                    event_id, workspace_id, event_type, trace_id, report_id,
+                    product_id, source, surface, label, metadata_json, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event.event_id,
+                    event.workspace_id,
+                    event.event_type.value,
+                    event.trace_id,
+                    event.report_id,
+                    event.product_id,
+                    event.source,
+                    event.surface,
+                    event.label,
+                    json.dumps(event.metadata, ensure_ascii=False),
+                    event.created_at,
+                ),
+            )
+        return event
+
+    def list_growth_events_for_workspace(
+        self,
+        workspace_id: str,
+        limit: int = 50,
+    ) -> list[GrowthEventRecord]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM growth_events
+                WHERE workspace_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (workspace_id, limit),
+            ).fetchall()
+        return [_growth_event_from_row(row) for row in rows]
+
+    def growth_funnel_for_workspace(
+        self,
+        workspace_id: str,
+        limit: int = 20,
+    ) -> GrowthFunnelDashboard:
+        metrics = self.metrics_for_workspace(workspace_id)
+        recent_events = self.list_growth_events_for_workspace(workspace_id, limit=limit)
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT event_type,
+                       COUNT(*) AS event_count,
+                       COUNT(DISTINCT COALESCE(trace_id, event_id)) AS unique_traces
+                FROM growth_events
+                WHERE workspace_id = ?
+                GROUP BY event_type
+                """,
+                (workspace_id,),
+            ).fetchall()
+            surface_rows = conn.execute(
+                """
+                SELECT surface, COUNT(*) AS event_count
+                FROM growth_events
+                WHERE workspace_id = ?
+                GROUP BY surface
+                ORDER BY event_count DESC, surface ASC
+                LIMIT 5
+                """,
+                (workspace_id,),
+            ).fetchall()
+        counts = {str(row["event_type"]): int(row["event_count"]) for row in rows}
+        unique_counts = {str(row["event_type"]): int(row["unique_traces"]) for row in rows}
+        baseline = max(metrics.analysis_runs, 1)
+        steps = [
+            _growth_funnel_step(
+                GrowthEventType.analysis_view,
+                "분석 결과 조회",
+                counts,
+                unique_counts,
+                baseline,
+                warning_threshold=0.35,
+                ok_threshold=0.65,
+                recommendation="분석 완료 후 결과 카드가 첫 화면에서 보이도록 유지하세요.",
+            ),
+            _growth_funnel_step(
+                GrowthEventType.recommendation_click,
+                "추천 카드 클릭",
+                counts,
+                unique_counts,
+                baseline,
+                warning_threshold=0.2,
+                ok_threshold=0.45,
+                recommendation="추천 카드의 가격/리스크/CTA 문구를 A/B로 비교하세요.",
+            ),
+            _growth_funnel_step(
+                GrowthEventType.alternative_click,
+                "대안 시나리오 전환",
+                counts,
+                unique_counts,
+                baseline,
+                warning_threshold=0.08,
+                ok_threshold=0.2,
+                recommendation="예산 확대/축소와 조건 강화 카드의 문구를 더 명확히 하세요.",
+            ),
+            _growth_funnel_step(
+                GrowthEventType.share_cta,
+                "공유 리포트 CTA",
+                counts,
+                unique_counts,
+                baseline,
+                warning_threshold=0.08,
+                ok_threshold=0.18,
+                recommendation="공개 리포트 공유 버튼을 구매 판단 카드 근처에 배치하세요.",
+            ),
+            _growth_funnel_step(
+                GrowthEventType.alert_cta,
+                "가격 알림 CTA",
+                counts,
+                unique_counts,
+                baseline,
+                warning_threshold=0.08,
+                ok_threshold=0.18,
+                recommendation="가격 대기 판정 사용자에게 목표가 알림을 즉시 제안하세요.",
+            ),
+            _growth_funnel_step(
+                GrowthEventType.subscription_cta,
+                "요금제 관심 CTA",
+                counts,
+                unique_counts,
+                baseline,
+                warning_threshold=0.03,
+                ok_threshold=0.08,
+                recommendation="구독 CTA는 리포트 저장/알림 생성 뒤에 다시 노출하세요.",
+            ),
+        ]
+        activation_rate = _event_rate(counts, GrowthEventType.recommendation_click, baseline)
+        share_rate = _event_rate(counts, GrowthEventType.share_cta, baseline)
+        alert_rate = _event_rate(counts, GrowthEventType.alert_cta, baseline)
+        paid_intent_rate = _event_rate(counts, GrowthEventType.subscription_cta, baseline)
+        status = _growth_funnel_status(steps, metrics.analysis_runs)
+        next_actions = [step.recommendation for step in steps if step.status != CheckStatus.ok]
+        return GrowthFunnelDashboard(
+            workspace_id=workspace_id,
+            generated_at=_now(),
+            total_events=metrics.growth_events,
+            unique_traces=metrics.growth_unique_traces,
+            activation_rate=activation_rate,
+            share_rate=share_rate,
+            alert_rate=alert_rate,
+            paid_intent_rate=paid_intent_rate,
+            status=status,
+            summary=_growth_funnel_summary(status, metrics.growth_events, activation_rate),
+            steps=steps,
+            top_surfaces=[
+                f"{row['surface']} {int(row['event_count'])}건" for row in surface_rows
+            ],
+            next_actions=next_actions[:5],
+            recent_events=recent_events,
+        )
+
     def create_beta_lead_for_workspace(
         self,
         workspace_id: str,
@@ -3887,6 +4081,57 @@ class SpecPilotStore:
                 f"SELECT COUNT(*) FROM purchase_link_clicks{where}",
                 params,
             ).fetchone()[0]
+            growth_events = conn.execute(
+                f"SELECT COUNT(*) FROM growth_events{where}",
+                params,
+            ).fetchone()[0]
+            growth_unique_traces = conn.execute(
+                f"""
+                SELECT COUNT(DISTINCT COALESCE(trace_id, event_id))
+                FROM growth_events{where}
+                """,
+                params,
+            ).fetchone()[0]
+            recommendation_card_clicks = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM growth_events{where}
+                {' AND ' if where else ' WHERE '}event_type = 'recommendation_click'
+                """,
+                params,
+            ).fetchone()[0]
+            alternative_scenario_clicks = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM growth_events{where}
+                {' AND ' if where else ' WHERE '}event_type = 'alternative_click'
+                """,
+                params,
+            ).fetchone()[0]
+            share_cta_clicks = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM growth_events{where}
+                {' AND ' if where else ' WHERE '}event_type = 'share_cta'
+                """,
+                params,
+            ).fetchone()[0]
+            alert_cta_clicks = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM growth_events{where}
+                {' AND ' if where else ' WHERE '}event_type = 'alert_cta'
+                """,
+                params,
+            ).fetchone()[0]
+            subscription_cta_clicks = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM growth_events{where}
+                {' AND ' if where else ' WHERE '}event_type = 'subscription_cta'
+                """,
+                params,
+            ).fetchone()[0]
             outcome_value_row = conn.execute(
                 f"""
                 SELECT
@@ -3971,6 +4216,13 @@ class SpecPilotStore:
             purchase_links=purchase_links,
             affiliate_purchase_links=affiliate_purchase_links,
             purchase_link_clicks=purchase_link_clicks,
+            growth_events=growth_events,
+            growth_unique_traces=growth_unique_traces,
+            recommendation_card_clicks=recommendation_card_clicks,
+            alternative_scenario_clicks=alternative_scenario_clicks,
+            share_cta_clicks=share_cta_clicks,
+            alert_cta_clicks=alert_cta_clicks,
+            subscription_cta_clicks=subscription_cta_clicks,
             purchase_conversion_rate=round(
                 (
                     completed_purchase_outcomes
@@ -4147,6 +4399,7 @@ class SpecPilotStore:
         backlog = self.beta_backlog_action_summary_for_workspace(workspace_id, limit=200)
         integrations = self.integration_readiness_for_workspace(workspace_id)
         data_governance = self.data_governance_for_workspace(workspace_id)
+        growth = self.growth_funnel_for_workspace(workspace_id, limit=10)
         checks = [
             _launch_gate_check(
                 area="readiness",
@@ -4202,6 +4455,21 @@ class SpecPilotStore:
                 recommendation=(
                     "피드백, 구매 의향, 실제 구매 결과를 더 모아 "
                     "공개 확대 판단의 표본을 보강하세요."
+                ),
+            ),
+            _launch_gate_check(
+                area="growth",
+                label="제품 성장 퍼널",
+                status=growth.status,
+                metric=(
+                    f"이벤트 {growth.total_events}건 / "
+                    f"추천 클릭 {round(growth.activation_rate * 100)}% / "
+                    f"공유 CTA {round(growth.share_rate * 100)}%"
+                ),
+                recommendation=(
+                    growth.next_actions[0]
+                    if growth.next_actions
+                    else "추천 카드와 CTA 전환 추세를 유지하세요."
                 ),
             ),
             _launch_gate_check(
@@ -4278,6 +4546,10 @@ class SpecPilotStore:
                 "integration_blockers": integrations.blocker_count,
                 "data_governance_status": data_governance.status.value,
                 "raw_contact_surfaces": data_governance.raw_contact_surfaces,
+                "growth_events": growth.total_events,
+                "recommendation_click_rate": growth.activation_rate,
+                "share_cta_rate": growth.share_rate,
+                "subscription_cta_rate": growth.paid_intent_rate,
             },
         )
 
@@ -4744,6 +5016,20 @@ class SpecPilotStore:
                     source TEXT NOT NULL,
                     readiness_status TEXT NOT NULL,
                     recommendation TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS growth_events (
+                    event_id TEXT PRIMARY KEY,
+                    workspace_id TEXT NOT NULL DEFAULT 'demo',
+                    event_type TEXT NOT NULL,
+                    trace_id TEXT,
+                    report_id TEXT,
+                    product_id TEXT,
+                    source TEXT NOT NULL DEFAULT 'web',
+                    surface TEXT NOT NULL DEFAULT 'home',
+                    label TEXT NOT NULL DEFAULT '',
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
                     created_at TEXT NOT NULL
                 );
 
@@ -6540,6 +6826,23 @@ def _feedback_from_row(row: sqlite3.Row) -> FeedbackRecord:
     )
 
 
+def _growth_event_from_row(row: sqlite3.Row) -> GrowthEventRecord:
+    data = dict(row)
+    return GrowthEventRecord(
+        event_id=data["event_id"],
+        workspace_id=data["workspace_id"],
+        event_type=GrowthEventType(data["event_type"]),
+        trace_id=data["trace_id"],
+        report_id=data["report_id"],
+        product_id=data["product_id"],
+        source=data["source"],
+        surface=data["surface"],
+        label=data["label"],
+        metadata=json.loads(data["metadata_json"]),
+        created_at=data["created_at"],
+    )
+
+
 def _beta_lead_from_row(row: sqlite3.Row) -> BetaLead:
     data = dict(row)
     return BetaLead(
@@ -7995,6 +8298,76 @@ def _observability_dispatch_status(
             f"span {export.span_count}개를 접수했습니다."
         ),
         None,
+    )
+
+
+def _growth_funnel_step(
+    key: GrowthEventType,
+    label: str,
+    counts: dict[str, int],
+    unique_counts: dict[str, int],
+    baseline: int,
+    *,
+    warning_threshold: float,
+    ok_threshold: float,
+    recommendation: str,
+) -> GrowthFunnelStep:
+    event_count = counts.get(key.value, 0)
+    conversion_rate = _event_rate(counts, key, baseline)
+    status = CheckStatus.blocker
+    if conversion_rate >= ok_threshold:
+        status = CheckStatus.ok
+    elif conversion_rate >= warning_threshold:
+        status = CheckStatus.warning
+    return GrowthFunnelStep(
+        key=key,
+        label=label,
+        event_count=event_count,
+        unique_traces=unique_counts.get(key.value, 0),
+        conversion_rate=conversion_rate,
+        status=status,
+        recommendation=recommendation,
+    )
+
+
+def _event_rate(
+    counts: dict[str, int],
+    key: GrowthEventType,
+    baseline: int,
+) -> float:
+    return round(counts.get(key.value, 0) / max(baseline, 1), 4)
+
+
+def _growth_funnel_status(
+    steps: list[GrowthFunnelStep],
+    analysis_runs: int,
+) -> CheckStatus:
+    if analysis_runs == 0:
+        return CheckStatus.blocker
+    if any(step.status == CheckStatus.blocker for step in steps[:2]):
+        return CheckStatus.blocker
+    if any(step.status == CheckStatus.warning for step in steps):
+        return CheckStatus.warning
+    return CheckStatus.ok
+
+
+def _growth_funnel_summary(
+    status: CheckStatus,
+    total_events: int,
+    activation_rate: float,
+) -> str:
+    if status == CheckStatus.ok:
+        return (
+            f"성장 이벤트 {total_events}건과 추천 클릭률 "
+            f"{round(activation_rate * 100)}%가 공개 확대 기준을 충족합니다."
+        )
+    if status == CheckStatus.warning:
+        return (
+            f"성장 이벤트 {total_events}건이 수집됐지만 추천 클릭률 "
+            f"{round(activation_rate * 100)}%를 더 끌어올려야 합니다."
+        )
+    return (
+        "분석 실행 또는 추천 카드 클릭 표본이 부족해 공개 반응을 판단하기 어렵습니다."
     )
 
 

@@ -82,6 +82,17 @@ class PurchaseOutcomeStatus(StrEnum):
     returned = "returned"
 
 
+class GrowthEventType(StrEnum):
+    analysis_view = "analysis_view"
+    recommendation_click = "recommendation_click"
+    alternative_click = "alternative_click"
+    share_cta = "share_cta"
+    alert_cta = "alert_cta"
+    purchase_link_cta = "purchase_link_cta"
+    subscription_cta = "subscription_cta"
+    feedback_cta = "feedback_cta"
+
+
 class TrustGrade(StrEnum):
     high = "high"
     medium = "medium"
@@ -799,6 +810,58 @@ class CategoryMarketReport(BaseModel):
     publishing_checklist: list[str] = Field(default_factory=list)
 
 
+class GrowthEventRequest(BaseModel):
+    event_type: GrowthEventType
+    trace_id: str | None = None
+    report_id: str | None = None
+    product_id: str | None = None
+    source: str = "web"
+    surface: str = "home"
+    label: str = ""
+    metadata: dict[str, int | float | str | bool] = Field(default_factory=dict)
+
+
+class GrowthEventRecord(BaseModel):
+    event_id: str
+    workspace_id: str = "demo"
+    event_type: GrowthEventType
+    trace_id: str | None = None
+    report_id: str | None = None
+    product_id: str | None = None
+    source: str
+    surface: str
+    label: str
+    metadata: dict[str, int | float | str | bool] = Field(default_factory=dict)
+    created_at: str
+
+
+class GrowthFunnelStep(BaseModel):
+    key: GrowthEventType
+    label: str
+    event_count: int = 0
+    unique_traces: int = 0
+    conversion_rate: float = 0
+    status: CheckStatus = CheckStatus.warning
+    recommendation: str
+
+
+class GrowthFunnelDashboard(BaseModel):
+    workspace_id: str
+    generated_at: str
+    total_events: int = 0
+    unique_traces: int = 0
+    activation_rate: float = 0
+    share_rate: float = 0
+    alert_rate: float = 0
+    paid_intent_rate: float = 0
+    status: CheckStatus = CheckStatus.warning
+    summary: str
+    steps: list[GrowthFunnelStep] = Field(default_factory=list)
+    top_surfaces: list[str] = Field(default_factory=list)
+    next_actions: list[str] = Field(default_factory=list)
+    recent_events: list[GrowthEventRecord] = Field(default_factory=list)
+
+
 class BetaCohortRequest(BaseModel):
     name: str = Field(min_length=2)
     scenario: str = Field(min_length=2)
@@ -1451,6 +1514,13 @@ class OperationsMetrics(BaseModel):
     purchase_links: int = 0
     affiliate_purchase_links: int = 0
     purchase_link_clicks: int = 0
+    growth_events: int = 0
+    growth_unique_traces: int = 0
+    recommendation_card_clicks: int = 0
+    alternative_scenario_clicks: int = 0
+    share_cta_clicks: int = 0
+    alert_cta_clicks: int = 0
+    subscription_cta_clicks: int = 0
     purchase_conversion_rate: float = 0
     average_final_price_delta_krw: float = 0
     purchase_outcome_value_krw: int = 0
