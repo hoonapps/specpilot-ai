@@ -22,6 +22,7 @@ from specpilot_ai.core.models import (
     AlertSubscriptionRequest,
     AnalyzeRequest,
     AnalyzeResponse,
+    BenchmarkValidationRequest,
     BetaBacklogAction,
     BetaBacklogActionRequest,
     BetaBacklogItem,
@@ -107,6 +108,7 @@ from specpilot_ai.core.models import (
     ProductBrief,
     ProductPageEvidenceRequest,
     PublicAcquisitionHub,
+    PublicBenchmarkValidationKit,
     PublicBudgetStressKit,
     PublicBuildBlueprintKit,
     PublicBuyerChallengeKit,
@@ -225,6 +227,7 @@ from specpilot_ai.core.models import (
 )
 from specpilot_ai.graph.neo4j_client import Neo4jRepository
 from specpilot_ai.graph.product_graph import pc_purchase_graph_schema
+from specpilot_ai.services.benchmark_validation import build_public_benchmark_validation_kit
 from specpilot_ai.services.budget_stress import build_public_budget_stress_kit
 from specpilot_ai.services.build_blueprint import build_public_build_blueprint_kit
 from specpilot_ai.services.buyer_challenge import build_public_buyer_challenge_kit
@@ -1409,6 +1412,16 @@ def public_first_boot_setup_kit(
     request: FirstBootSetupRequest,
 ) -> PublicFirstBootSetupKit:
     return build_public_first_boot_setup_kit(request)
+
+
+@app.post(
+    "/public/benchmark-validation-kit",
+    response_model=PublicBenchmarkValidationKit,
+)
+def public_benchmark_validation_kit(
+    request: BenchmarkValidationRequest,
+) -> PublicBenchmarkValidationKit:
+    return build_public_benchmark_validation_kit(request)
 
 
 @app.post(

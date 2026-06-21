@@ -316,6 +316,23 @@ CHECKS = (
         ),
     ),
     SmokeCheck(
+        name="public-benchmark-validation-kit",
+        method="POST",
+        path="/public/benchmark-validation-kit",
+        required_keys=(
+            "kit_version",
+            "performance_status",
+            "performance_score",
+            "bottleneck_summary",
+            "checks",
+            "evidence_checklist",
+            "issue_triage",
+            "seller_message",
+            "messages",
+            "share_copy",
+        ),
+    ),
+    SmokeCheck(
         name="public-upgrade-readiness-kit",
         method="POST",
         path="/public/upgrade-readiness-kit",
@@ -1145,6 +1162,29 @@ def run_smoke() -> list[dict[str, Any]]:
                 "observed_issues": [],
                 "warranty_registered": False,
                 "bios_updated": True,
+                "source": "release_smoke",
+            }
+        if check.name == "public-benchmark-validation-kit":
+            json_body = {
+                "category": "desktop_pc",
+                "product_title": "Creator RTX 4070 SUPER Build",
+                "primary_purpose": "QHD 영상 편집",
+                "cpu_name": "Ryzen 7 7800X3D",
+                "gpu_name": "RTX 4070 SUPER",
+                "ram_gb": 32,
+                "expected_cpu_score": 18_000,
+                "observed_cpu_score": 17_400,
+                "expected_gpu_score": 28_000,
+                "observed_gpu_score": 27_200,
+                "expected_ssd_read_mbps": 7_000,
+                "observed_ssd_read_mbps": 6_850,
+                "max_cpu_temp_c": 82,
+                "max_gpu_temp_c": 78,
+                "fan_noise_note": "부하 시 정상 팬 소음",
+                "throttling_observed": False,
+                "crashes": [],
+                "driver_versions_checked": True,
+                "evidence_links": ["release-smoke://benchmark"],
                 "source": "release_smoke",
             }
         if check.name == "public-upgrade-readiness-kit":

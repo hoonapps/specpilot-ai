@@ -2245,6 +2245,68 @@ class PublicFirstBootSetupKit(BaseModel):
     next_actions: list[str] = Field(default_factory=list)
 
 
+class BenchmarkValidationRequest(BaseModel):
+    category: Category = Category.desktop_pc
+    product_title: str = "새 컴퓨터"
+    primary_purpose: str = "일상/작업"
+    cpu_name: str = ""
+    gpu_name: str = ""
+    ram_gb: int = Field(default=16, ge=0, le=512)
+    expected_cpu_score: int | None = Field(default=None, ge=0, le=2_000_000)
+    observed_cpu_score: int | None = Field(default=None, ge=0, le=2_000_000)
+    expected_gpu_score: int | None = Field(default=None, ge=0, le=2_000_000)
+    observed_gpu_score: int | None = Field(default=None, ge=0, le=2_000_000)
+    expected_ssd_read_mbps: int | None = Field(default=None, ge=0, le=50_000)
+    observed_ssd_read_mbps: int | None = Field(default=None, ge=0, le=50_000)
+    max_cpu_temp_c: int | None = Field(default=None, ge=0, le=130)
+    max_gpu_temp_c: int | None = Field(default=None, ge=0, le=130)
+    fan_noise_note: str = ""
+    throttling_observed: bool = False
+    crashes: list[str] = Field(default_factory=list)
+    driver_versions_checked: bool = False
+    evidence_links: list[str] = Field(default_factory=list)
+    source: str = "web"
+
+
+class BenchmarkValidationCheck(BaseModel):
+    check_id: str
+    label: str
+    status: CheckStatus
+    observed: str
+    expected: str
+    action: str
+    evidence: str
+
+
+class BenchmarkValidationMessage(BaseModel):
+    channel: str
+    label: str
+    copy_text: str
+    cta_label: str
+
+
+class PublicBenchmarkValidationKit(BaseModel):
+    kit_version: str = "specpilot.public_benchmark_validation_kit.v1"
+    generated_at: str
+    category: Category
+    product_title: str
+    performance_status: CheckStatus
+    performance_score: int = Field(ge=0, le=100)
+    bottleneck_summary: str
+    headline: str
+    summary: str
+    checks: list[BenchmarkValidationCheck] = Field(default_factory=list)
+    evidence_checklist: list[str] = Field(default_factory=list)
+    issue_triage: list[str] = Field(default_factory=list)
+    seller_message: str
+    messages: list[BenchmarkValidationMessage] = Field(default_factory=list)
+    analysis_prefill: str
+    share_copy: str
+    primary_cta_label: str = "벤치마크 결과로 분석 시작"
+    primary_cta_path: str = "#analysis"
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class UpgradeReadinessRequest(BaseModel):
     category: Category = Category.desktop_pc
     product_title: str = "구매 후보"

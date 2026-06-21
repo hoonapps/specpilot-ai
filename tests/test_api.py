@@ -1509,6 +1509,86 @@ def test_public_first_boot_setup_kit_guides_setup_and_issue_triage() -> None:
     assert any("전원/부팅/화면" in item for item in blocker_payload["issue_triage"])
 
 
+def test_public_benchmark_validation_kit_separates_normal_and_defect_evidence() -> None:
+    response = client.post(
+        "/public/benchmark-validation-kit",
+        json={
+            "category": "desktop_pc",
+            "product_title": "Creator RTX 4070 SUPER Build",
+            "primary_purpose": "QHD 영상 편집",
+            "cpu_name": "Ryzen 7 7800X3D",
+            "gpu_name": "RTX 4070 SUPER",
+            "ram_gb": 32,
+            "expected_cpu_score": 18_000,
+            "observed_cpu_score": 17_400,
+            "expected_gpu_score": 28_000,
+            "observed_gpu_score": 27_200,
+            "expected_ssd_read_mbps": 7_000,
+            "observed_ssd_read_mbps": 6_850,
+            "max_cpu_temp_c": 82,
+            "max_gpu_temp_c": 78,
+            "fan_noise_note": "부하 시 정상 팬 소음",
+            "throttling_observed": False,
+            "crashes": [],
+            "driver_versions_checked": True,
+            "evidence_links": ["benchmark://capture-1"],
+            "source": "pytest",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["kit_version"] == "specpilot.public_benchmark_validation_kit.v1"
+    assert payload["performance_status"] == "ok"
+    assert payload["performance_score"] >= 90
+    assert "정상 proof" in payload["headline"]
+    assert {check["check_id"] for check in payload["checks"]} >= {
+        "cpu_score",
+        "gpu_score",
+        "ssd_read",
+        "cpu_temp",
+        "gpu_temp",
+        "driver_versions",
+    }
+    assert any("첨부 증거 1개" in item for item in payload["evidence_checklist"])
+    assert "판매자/제조사" in payload["messages"][0]["label"]
+    assert "SpecPilot AI 성능 벤치마크 검수" in payload["share_copy"]
+    assert payload["primary_cta_path"] == "#analysis"
+
+    throttled = client.post(
+        "/public/benchmark-validation-kit",
+        json={
+            "category": "laptop",
+            "product_title": "CreatorBook 16",
+            "primary_purpose": "영상 편집",
+            "cpu_name": "Core Ultra 7",
+            "gpu_name": "RTX 4060 Laptop",
+            "ram_gb": 16,
+            "expected_cpu_score": 14_000,
+            "observed_cpu_score": 8_900,
+            "expected_gpu_score": 17_000,
+            "observed_gpu_score": 10_000,
+            "expected_ssd_read_mbps": 5_000,
+            "observed_ssd_read_mbps": 2_800,
+            "max_cpu_temp_c": 106,
+            "max_gpu_temp_c": 96,
+            "fan_noise_note": "고주파와 갈림음",
+            "throttling_observed": True,
+            "crashes": ["렌더링 중 꺼짐", "블루스크린"],
+            "driver_versions_checked": False,
+        },
+    )
+    assert throttled.status_code == 200
+    defect_payload = throttled.json()
+    assert defect_payload["performance_status"] == "blocker"
+    assert defect_payload["performance_score"] < 30
+    assert "반품/AS 증거" in defect_payload["headline"]
+    assert any(check["check_id"] == "throttling" for check in defect_payload["checks"])
+    assert any(check["check_id"] == "crash_stability" for check in defect_payload["checks"])
+    assert any("반품/교환 마감 전" in action for action in defect_payload["next_actions"])
+    assert "렌더링 중 꺼짐" in defect_payload["seller_message"]
+
+
 def test_public_upgrade_readiness_kit_scores_long_term_upgrade_room() -> None:
     response = client.post(
         "/public/upgrade-readiness-kit",
