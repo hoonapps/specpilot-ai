@@ -65,6 +65,7 @@ SpecPilot AI는 최저가 링크만 보여주는 쇼핑 도구가 아닙니다. 
 - 공개 실구매가 분해 키트: 표시가, 배송비, 조립비, OS 비용, 쿠폰, 카드 할인, 포인트, 수량을 최종 실구매가와 예산/리포트 가격 차이로 변환
 - 공개 예산/조건 스트레스 테스트: 후보 가격이 예산을 넘을 때 예산 유지, 소폭 증액, 품질 우선 증액, 조건 완화, 목표가 대기 시나리오를 비교
 - 공개 구매 실행 패키지: 최종가, 예산, blocker/warning, 누락 증거, 판매자 질문을 결제 전 실행 단계, 증거 게이트, 중단 조건, 공유 문구로 변환
+- 공개 최종 구매 판정 키트: 가격, 체크아웃, 호환성, 리뷰, 보증, 증거 상태를 go/verify/hold 최종 판단과 실행/검토 prefill로 압축
 - 공개 30초 검토 카드: 공유받은 가족/팀/커뮤니티 검토자가 승인, 증거 요청, 반대/보류 중 하나로 바로 응답할 수 있는 카드와 답장 문구 제공
 - 공개 판매자 조건 협상 키트: 현재가, 목표가, 경쟁가, 배송/조립/OS 비용, 재고, 위험 조건을 조건 안전 협상 메시지와 guardrail로 변환
 - 공개 상품명 해석 키트: 쇼핑몰 상품명/옵션명에서 CPU/GPU/RAM/SSD/OS와 리퍼·전시·해외 조건을 구조화하고 검수 prefill을 제공
@@ -564,6 +565,39 @@ curl -X POST http://127.0.0.1:8000/public/purchase-execution-kit \
     "evidence_ready": ["최종 결제 금액", "옵션명"],
     "decision_deadline": "오늘 22시 전",
     "payment_method": "카드 결제",
+    "share_audience": "family",
+    "source": "release_smoke"
+  }'
+```
+
+공개 최종 구매 판정 키트는 가격, 체크아웃 잠금, 호환성, 리뷰, 보증, 증거 상태를 한 번에 합쳐 `go`, `verify`, `hold` 중 하나로 압축합니다.
+
+```bash
+curl -X POST http://127.0.0.1:8000/public/final-decision-kit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "category": "desktop_pc",
+    "product_title": "Creator RTX 4070 SUPER Build",
+    "seller_name": "PC Mall",
+    "budget_krw": 2200000,
+    "final_price_krw": 2165000,
+    "selected_reason": "QHD 편집과 게임 목적에 CPU/GPU/RAM 균형이 좋음",
+    "price_status": "ok",
+    "compatibility_status": "ok",
+    "review_status": "warning",
+    "warranty_status": "warning",
+    "checkout_status": "warning",
+    "evidence_status": "warning",
+    "price_score": 88,
+    "compatibility_score": 84,
+    "review_score": 68,
+    "warranty_score": 72,
+    "checkout_score": 76,
+    "ready_evidence": ["최종 결제 금액", "옵션명", "CPU/GPU/RAM/SSD"],
+    "missing_evidence": ["AS 조건", "배송 예정일"],
+    "warning_reasons": ["팬 소음 반복 후기 확인 필요"],
+    "seller_questions": ["실제 출고 사양이 장바구니 옵션과 같은가요?"],
+    "decision_deadline": "오늘 22시 전",
     "share_audience": "family",
     "source": "release_smoke"
   }'
@@ -2232,6 +2266,7 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 - `/public/price-trust-kit`: 공개 가격 캡처 시각, 출처 다양성, 제휴/비제휴 대안, 결제 화면 증거를 가격 신뢰 점수, 고지 문구, 공유 proof로 변환
 - `/public/budget-stress-kit`: 공개 후보 가격과 예산 차이를 예산 유지, 증액, 조건 완화, 목표가 대기 시나리오와 결제 규칙으로 변환
 - `/public/purchase-execution-kit`: 공개 최종가, 예산, blocker/warning, 누락 증거, 판매자 질문을 결제 전 실행 단계, 증거 게이트, 중단 조건, 채널별 공유 문구로 변환
+- `/public/final-decision-kit`: 공개 가격/체크아웃/호환성/리뷰/보증/증거 신호를 go/verify/hold 최종 판정, 결정 게이트, 구매 실행 prefill, 30초 검토 prefill로 변환
 - `/public/reviewer-quick-card-kit`: 공개 구매 후보를 공유받은 검토자의 30초 승인/증거 요청/반대 응답 카드, 리스크 체크, 답장 템플릿으로 변환
 - `/public/custom-candidate-decision-kit`: 공개 실제 후보 2~6개를 가격, 목적 적합도, 증거, 보증/반품, 재고, 위험 조건으로 랭킹하고 1순위/보류/제외 판단, 판매자 질문, 분석 prefill로 변환
 - `/public/checkout-lock-kit`: 공개 후보 비교에서 고른 1순위의 잠금가/사양/판매자/보증 기준을 최종 결제 화면과 대조해 locked/verify/blocked, 중단 조건, 캡처 체크리스트, 구매 실행 prefill로 변환

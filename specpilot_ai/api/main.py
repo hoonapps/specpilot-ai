@@ -64,6 +64,7 @@ from specpilot_ai.core.models import (
     DemoScenarioGallery,
     FeedbackRecord,
     FeedbackRequest,
+    FinalDecisionKitRequest,
     FirstBootSetupRequest,
     GrowthEventRecord,
     GrowthEventRequest,
@@ -127,6 +128,7 @@ from specpilot_ai.core.models import (
     PublicDealTimingWindow,
     PublicDecisionDefenseKit,
     PublicDefectClaimKit,
+    PublicFinalDecisionKit,
     PublicFirstBootSetupKit,
     PublicLaunchActionRouter,
     PublicLaunchObjectionKit,
@@ -257,6 +259,7 @@ from specpilot_ai.services.deal_timing import build_public_deal_timing_window
 from specpilot_ai.services.decision_defense import build_public_decision_defense_kit
 from specpilot_ai.services.defect_claim import build_public_defect_claim_kit
 from specpilot_ai.services.demo_gallery import build_demo_scenario_gallery
+from specpilot_ai.services.final_decision import build_public_final_decision_kit
 from specpilot_ai.services.first_boot_setup import build_public_first_boot_setup_kit
 from specpilot_ai.services.intake import diagnose_intake
 from specpilot_ai.services.launch_campaign import (
@@ -1559,6 +1562,16 @@ def public_purchase_execution_kit(
     request: PurchaseExecutionKitRequest,
 ) -> PublicPurchaseExecutionKit:
     return build_public_purchase_execution_kit(request)
+
+
+@app.post(
+    "/public/final-decision-kit",
+    response_model=PublicFinalDecisionKit,
+)
+def public_final_decision_kit(
+    request: FinalDecisionKitRequest,
+) -> PublicFinalDecisionKit:
+    return build_public_final_decision_kit(request)
 
 
 @app.post(

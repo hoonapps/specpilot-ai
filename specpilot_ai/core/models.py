@@ -3003,6 +3003,80 @@ class ReviewerQuickCardRequest(BaseModel):
     source: str = "web"
 
 
+class FinalDecisionKitRequest(BaseModel):
+    category: Category = Category.desktop_pc
+    product_title: str = "구매 후보"
+    seller_name: str = "판매자"
+    budget_krw: int = Field(default=2_200_000, ge=300_000, le=200_000_000)
+    final_price_krw: int | None = Field(default=None, ge=0, le=200_000_000)
+    selected_reason: str = "목적과 예산에 맞는 1순위 후보"
+    price_status: CheckStatus = CheckStatus.warning
+    compatibility_status: CheckStatus = CheckStatus.warning
+    review_status: CheckStatus = CheckStatus.warning
+    warranty_status: CheckStatus = CheckStatus.warning
+    checkout_status: CheckStatus = CheckStatus.warning
+    evidence_status: CheckStatus = CheckStatus.warning
+    price_score: int = Field(default=72, ge=0, le=100)
+    compatibility_score: int = Field(default=72, ge=0, le=100)
+    review_score: int = Field(default=72, ge=0, le=100)
+    warranty_score: int = Field(default=72, ge=0, le=100)
+    checkout_score: int = Field(default=72, ge=0, le=100)
+    ready_evidence: list[str] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=list)
+    blocker_reasons: list[str] = Field(default_factory=list)
+    warning_reasons: list[str] = Field(default_factory=list)
+    seller_questions: list[str] = Field(default_factory=list)
+    decision_deadline: str = "오늘 결제 전"
+    share_audience: str = "family"
+    source: str = "web"
+
+
+class FinalDecisionSignal(BaseModel):
+    signal_id: str
+    label: str
+    status: CheckStatus
+    score: int = Field(ge=0, le=100)
+    weight: int = Field(ge=0, le=100)
+    evidence: str
+    action: str
+
+
+class FinalDecisionGate(BaseModel):
+    gate_id: str
+    label: str
+    status: CheckStatus
+    pass_rule: str
+    fail_rule: str
+
+
+class PublicFinalDecisionKit(BaseModel):
+    kit_version: str = "specpilot.public_final_decision_kit.v1"
+    generated_at: str
+    category: Category
+    product_title: str
+    seller_name: str
+    final_decision: str
+    decision_status: CheckStatus
+    decision_score: int = Field(ge=0, le=100)
+    headline: str
+    summary: str
+    primary_action: str
+    price_delta_krw: int | None = None
+    signals: list[FinalDecisionSignal] = Field(default_factory=list)
+    decision_gates: list[FinalDecisionGate] = Field(default_factory=list)
+    blocker_reasons: list[str] = Field(default_factory=list)
+    warning_reasons: list[str] = Field(default_factory=list)
+    evidence_checklist: list[str] = Field(default_factory=list)
+    seller_questions: list[str] = Field(default_factory=list)
+    execution_prefill: PurchaseExecutionKitRequest
+    reviewer_prefill: ReviewerQuickCardRequest
+    analysis_prefill: str
+    share_copy: str
+    primary_cta_label: str = "최종 판정 기준으로 분석 시작"
+    primary_cta_path: str = "#analysis"
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class ReviewerVoteOption(BaseModel):
     vote_id: str
     label: str

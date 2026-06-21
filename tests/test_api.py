@@ -2448,6 +2448,109 @@ def test_public_purchase_execution_kit_turns_checks_into_checkout_runbook() -> N
     assert any("결제를 멈추고" in action for action in hold_payload["next_actions"])
 
 
+def test_public_final_decision_kit_aggregates_purchase_go_no_go() -> None:
+    verify = client.post(
+        "/public/final-decision-kit",
+        json={
+            "category": "desktop_pc",
+            "product_title": "Creator RTX 4070 SUPER Build",
+            "seller_name": "PC Mall",
+            "budget_krw": 2_200_000,
+            "final_price_krw": 2_165_000,
+            "selected_reason": "QHD 편집과 게임 목적에 CPU/GPU/RAM 균형이 좋음",
+            "price_status": "ok",
+            "compatibility_status": "ok",
+            "review_status": "warning",
+            "warranty_status": "warning",
+            "checkout_status": "warning",
+            "evidence_status": "warning",
+            "price_score": 88,
+            "compatibility_score": 84,
+            "review_score": 68,
+            "warranty_score": 72,
+            "checkout_score": 76,
+            "ready_evidence": ["최종 결제 금액", "옵션명", "CPU/GPU/RAM/SSD"],
+            "missing_evidence": ["AS 조건", "배송 예정일"],
+            "warning_reasons": ["팬 소음 반복 후기 확인 필요"],
+            "seller_questions": ["실제 출고 사양이 장바구니 옵션과 같은가요?"],
+            "decision_deadline": "오늘 22시 전",
+            "share_audience": "family",
+            "source": "pytest",
+        },
+    )
+
+    assert verify.status_code == 200
+    payload = verify.json()
+    assert payload["kit_version"] == "specpilot.public_final_decision_kit.v1"
+    assert payload["final_decision"] == "verify"
+    assert payload["decision_status"] == "warning"
+    assert 40 < payload["decision_score"] < 90
+    assert payload["price_delta_krw"] == -35_000
+    assert {signal["signal_id"] for signal in payload["signals"]} == {
+        "price",
+        "checkout",
+        "compatibility",
+        "review",
+        "warranty",
+        "evidence",
+    }
+    assert any(signal["status"] == "warning" for signal in payload["signals"])
+    assert {gate["gate_id"] for gate in payload["decision_gates"]} == {
+        "blocker_zero",
+        "evidence_closed",
+        "deadline",
+    }
+    assert any("AS 조건" in reason for reason in payload["warning_reasons"])
+    assert any("최종 결제 화면" in item for item in payload["evidence_checklist"])
+    assert any("초기 불량" in question for question in payload["seller_questions"])
+    assert payload["execution_prefill"]["verdict"] == "verify"
+    assert payload["execution_prefill"]["warning_count"] >= 1
+    assert payload["reviewer_prefill"]["buyer_decision"] == "verify"
+    assert "go/verify/hold" in payload["analysis_prefill"]
+    assert "SpecPilot AI 최종 구매 판정" in payload["share_copy"]
+    assert payload["next_actions"]
+
+    go = client.post(
+        "/public/final-decision-kit",
+        json={
+            "category": "laptop",
+            "product_title": "CreatorBook Pro 16",
+            "seller_name": "Official Store",
+            "budget_krw": 2_400_000,
+            "final_price_krw": 2_290_000,
+            "selected_reason": "휴대성, 보증, 성능이 목적에 맞음",
+            "price_status": "ok",
+            "compatibility_status": "ok",
+            "review_status": "ok",
+            "warranty_status": "ok",
+            "checkout_status": "ok",
+            "evidence_status": "ok",
+            "price_score": 92,
+            "compatibility_score": 88,
+            "review_score": 86,
+            "warranty_score": 90,
+            "checkout_score": 91,
+            "ready_evidence": [
+                "최종 결제 금액",
+                "옵션명",
+                "반품 14일",
+                "국내 AS 24개월",
+            ],
+            "missing_evidence": [],
+            "decision_deadline": "오늘 결제 전",
+        },
+    )
+    assert go.status_code == 200
+    go_payload = go.json()
+    assert go_payload["final_decision"] == "go"
+    assert go_payload["decision_status"] == "ok"
+    assert go_payload["decision_score"] >= 82
+    assert not go_payload["blocker_reasons"]
+    assert go_payload["execution_prefill"]["verdict"] == "ready"
+    assert go_payload["reviewer_prefill"]["buyer_decision"] == "ready"
+    assert "결제 전 증거 캡처" in go_payload["headline"]
+
+
 def test_public_reviewer_quick_card_kit_turns_purchase_into_fast_vote() -> None:
     response = client.post(
         "/public/reviewer-quick-card-kit",
