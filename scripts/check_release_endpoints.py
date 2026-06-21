@@ -414,6 +414,25 @@ CHECKS = (
             "share_copy",
         ),
     ),
+    SmokeCheck(
+        name="public-reviewer-quick-card-kit",
+        method="POST",
+        path="/public/reviewer-quick-card-kit",
+        required_keys=(
+            "kit_version",
+            "review_status",
+            "review_score",
+            "buyer_summary",
+            "reviewer_instruction",
+            "vote_options",
+            "risk_checks",
+            "reviewer_questions",
+            "required_evidence",
+            "reply_templates",
+            "analysis_prefill",
+            "share_copy",
+        ),
+    ),
 )
 
 
@@ -1223,6 +1242,24 @@ def run_smoke() -> list[dict[str, Any]]:
                 "decision_deadline": "오늘 22시 전",
                 "payment_method": "카드 결제",
                 "share_audience": "family",
+                "source": "release_smoke",
+            }
+        if check.name == "public-reviewer-quick-card-kit":
+            json_body = {
+                "category": "desktop_pc",
+                "product_title": "Creator RTX 4070 SUPER Build",
+                "buyer_decision": "verify",
+                "final_price_krw": 2_165_000,
+                "budget_krw": 2_200_000,
+                "confidence_percent": 76,
+                "blocker_count": 0,
+                "warning_count": 2,
+                "key_reasons": ["QHD 편집 목적에 GPU/RAM이 맞음", "예산 안", "국내 AS"],
+                "watchouts": ["배송 예정일", "카드 할인 조건"],
+                "missing_evidence": ["AS 조건", "배송 예정일"],
+                "reviewer_role": "family",
+                "review_deadline": "오늘 22시 전",
+                "share_channel": "kakao",
                 "source": "release_smoke",
             }
         response = client.request(check.method, check.path, headers=headers, json=json_body)

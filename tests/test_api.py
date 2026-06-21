@@ -1958,6 +1958,75 @@ def test_public_purchase_execution_kit_turns_checks_into_checkout_runbook() -> N
     assert any("결제를 멈추고" in action for action in hold_payload["next_actions"])
 
 
+def test_public_reviewer_quick_card_kit_turns_purchase_into_fast_vote() -> None:
+    response = client.post(
+        "/public/reviewer-quick-card-kit",
+        json={
+            "category": "desktop_pc",
+            "product_title": "Creator RTX 4070 SUPER Build",
+            "buyer_decision": "verify",
+            "final_price_krw": 2_165_000,
+            "budget_krw": 2_200_000,
+            "confidence_percent": 76,
+            "blocker_count": 0,
+            "warning_count": 2,
+            "key_reasons": ["QHD 편집 목적에 GPU/RAM이 맞음", "예산 안", "국내 AS"],
+            "watchouts": ["배송 예정일", "카드 할인 조건"],
+            "missing_evidence": ["AS 조건", "배송 예정일"],
+            "reviewer_role": "family",
+            "review_deadline": "오늘 22시 전",
+            "share_channel": "kakao",
+            "source": "pytest",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["kit_version"] == "specpilot.public_reviewer_quick_card_kit.v1"
+    assert payload["review_status"] == "warning"
+    assert payload["review_score"] < 90
+    assert "증거 요청" in payload["headline"]
+    assert "Creator RTX 4070 SUPER Build" in payload["buyer_summary"]
+    assert {option["vote_id"] for option in payload["vote_options"]} == {
+        "approve",
+        "ask_evidence",
+        "reject_or_hold",
+    }
+    assert any(check["check_id"] == "evidence" for check in payload["risk_checks"])
+    assert any("AS 조건" in item for item in payload["required_evidence"])
+    assert any("조건부 승인" in item for item in payload["reply_templates"])
+    assert "30초 검토 카드" in payload["analysis_prefill"]
+    assert "SpecPilot AI 30초 검토 카드" in payload["share_copy"]
+    assert payload["next_actions"]
+
+    blocker = client.post(
+        "/public/reviewer-quick-card-kit",
+        json={
+            "category": "laptop",
+            "product_title": "해외 리퍼 노트북",
+            "buyer_decision": "buy_now",
+            "final_price_krw": 1_780_000,
+            "budget_krw": 1_600_000,
+            "confidence_percent": 48,
+            "blocker_count": 2,
+            "warning_count": 3,
+            "key_reasons": ["가격이 싸 보임"],
+            "watchouts": ["해외 리퍼", "반품 불가"],
+            "missing_evidence": ["보증 주체", "반품 조건"],
+            "reviewer_role": "team",
+            "review_deadline": "오늘 결제 전",
+            "share_channel": "slack",
+        },
+    )
+    assert blocker.status_code == 200
+    blocker_payload = blocker.json()
+    assert blocker_payload["review_status"] == "blocker"
+    assert blocker_payload["review_score"] <= 54
+    assert any(option["vote_id"] == "reject_or_hold" for option in blocker_payload["vote_options"])
+    assert any(check["status"] == "blocker" for check in blocker_payload["risk_checks"])
+    assert any("보류" in action for action in blocker_payload["next_actions"])
+
+
 def test_public_checkout_nudge_kit_turns_cart_check_into_followup_plan() -> None:
     hold = client.post(
         "/public/checkout-nudge-kit",

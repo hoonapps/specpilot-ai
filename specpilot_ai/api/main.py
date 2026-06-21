@@ -144,6 +144,7 @@ from specpilot_ai.core.models import (
     PublicReferralLeaderboard,
     PublicReport,
     PublicRequirementsConsensusKit,
+    PublicReviewerQuickCardKit,
     PublicSellerEvidenceKit,
     PublicSellerNegotiationKit,
     PublicSetupCompatibilityKit,
@@ -175,6 +176,7 @@ from specpilot_ai.core.models import (
     RetentionHubDashboard,
     ReviewDecision,
     ReviewDecisionRequest,
+    ReviewerQuickCardRequest,
     ReviewQueueItem,
     ReviewStatus,
     SavedReportDetail,
@@ -261,6 +263,7 @@ from specpilot_ai.services.purchase_execution import build_public_purchase_execu
 from specpilot_ai.services.requirements_consensus import (
     build_public_requirements_consensus_kit,
 )
+from specpilot_ai.services.reviewer_quick_card import build_public_reviewer_quick_card_kit
 from specpilot_ai.services.seller_evidence import build_public_seller_evidence_kit
 from specpilot_ai.services.seller_negotiation import build_public_seller_negotiation_kit
 from specpilot_ai.services.setup_compatibility import build_public_setup_compatibility_kit
@@ -1463,6 +1466,16 @@ def public_purchase_execution_kit(
     request: PurchaseExecutionKitRequest,
 ) -> PublicPurchaseExecutionKit:
     return build_public_purchase_execution_kit(request)
+
+
+@app.post(
+    "/public/reviewer-quick-card-kit",
+    response_model=PublicReviewerQuickCardKit,
+)
+def public_reviewer_quick_card_kit(
+    request: ReviewerQuickCardRequest,
+) -> PublicReviewerQuickCardKit:
+    return build_public_reviewer_quick_card_kit(request)
 
 
 @app.post(

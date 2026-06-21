@@ -2590,6 +2590,62 @@ class PublicPurchaseExecutionKit(BaseModel):
     next_actions: list[str] = Field(default_factory=list)
 
 
+class ReviewerQuickCardRequest(BaseModel):
+    category: Category = Category.desktop_pc
+    product_title: str = "구매 후보"
+    buyer_decision: str = "verify"
+    final_price_krw: int | None = Field(default=None, ge=0, le=200_000_000)
+    budget_krw: int | None = Field(default=None, ge=0, le=200_000_000)
+    confidence_percent: int = Field(default=72, ge=0, le=100)
+    blocker_count: int = Field(default=0, ge=0, le=20)
+    warning_count: int = Field(default=2, ge=0, le=20)
+    key_reasons: list[str] = Field(default_factory=list)
+    watchouts: list[str] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=list)
+    reviewer_role: str = "family"
+    review_deadline: str = "오늘 결제 전"
+    share_channel: str = "kakao"
+    source: str = "web"
+
+
+class ReviewerVoteOption(BaseModel):
+    vote_id: str
+    label: str
+    status: CheckStatus
+    description: str
+    reply_text: str
+
+
+class ReviewerRiskCheck(BaseModel):
+    check_id: str
+    label: str
+    status: CheckStatus
+    evidence: str
+    reviewer_action: str
+
+
+class PublicReviewerQuickCardKit(BaseModel):
+    kit_version: str = "specpilot.public_reviewer_quick_card_kit.v1"
+    generated_at: str
+    category: Category
+    product_title: str
+    review_status: CheckStatus
+    review_score: int = Field(ge=0, le=100)
+    headline: str
+    buyer_summary: str
+    reviewer_instruction: str
+    vote_options: list[ReviewerVoteOption] = Field(default_factory=list)
+    risk_checks: list[ReviewerRiskCheck] = Field(default_factory=list)
+    reviewer_questions: list[str] = Field(default_factory=list)
+    required_evidence: list[str] = Field(default_factory=list)
+    reply_templates: list[str] = Field(default_factory=list)
+    analysis_prefill: str
+    share_copy: str
+    primary_cta_label: str = "검토 카드 기준으로 분석 시작"
+    primary_cta_path: str = "#analysis"
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class CheckoutNudgeRequest(BaseModel):
     category: Category = Category.desktop_pc
     product_title: str = "구매 후보"
