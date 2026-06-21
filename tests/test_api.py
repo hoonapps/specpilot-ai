@@ -2551,6 +2551,82 @@ def test_public_final_decision_kit_aggregates_purchase_go_no_go() -> None:
     assert "결제 전 증거 캡처" in go_payload["headline"]
 
 
+def test_public_purchase_journey_kit_orchestrates_public_kits() -> None:
+    response = client.post(
+        "/public/purchase-journey-kit",
+        json={
+            "category": "desktop_pc",
+            "buyer_question": "이 RTX 4070 SUPER 견적 오늘 결제해도 될까요?",
+            "product_title": "Creator RTX 4070 SUPER Build",
+            "seller_name": "PC Mall",
+            "listing_text": (
+                "RTX 4070 SUPER Ryzen 7 RAM 32GB SSD 1TB Windows 11 "
+                "국내 AS 24개월 반품 14일 카드 할인 최종가"
+            ),
+            "review_snippets": [
+                "성능은 좋은데 팬 소음이 있다는 후기가 있음",
+                "배송은 빠르고 조립 상태는 만족",
+                "발열은 게임 중 조금 높다는 의견",
+            ],
+            "budget_krw": 2_200_000,
+            "final_price_krw": 2_165_000,
+            "purchase_stage": "checkout",
+            "ready_evidence": ["최종 결제 금액", "옵션명", "국내 AS 24개월"],
+            "missing_evidence": ["배송 예정일"],
+            "urgency": "오늘 22시 전",
+            "share_audience": "family",
+            "source": "pytest",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["kit_version"] == "specpilot.public_purchase_journey_kit.v1"
+    assert payload["journey_status"] == "warning"
+    assert payload["current_stage"] == "final_decision"
+    assert payload["journey_score"] < 100
+    assert {step["step_id"] for step in payload["steps"]} == {
+        "question_triage",
+        "listing_and_cart",
+        "review_and_policy",
+        "final_decision",
+        "execution_and_review",
+    }
+    assert payload["steps"][0]["order"] == 1
+    assert any(step["kit_path"] == "/public/final-decision-kit" for step in payload["steps"])
+    assert any(card["route_id"] == "final_decision" for card in payload["route_cards"])
+    assert payload["triage_prefill"]["source"] == "purchase_journey"
+    assert payload["review_risk_prefill"]["review_snippets"]
+    assert payload["final_decision_prefill"]["seller_name"] == "PC Mall"
+    assert payload["final_decision_prefill"]["warning_reasons"]
+    assert any("최종가" in rule or "옵션명" in rule for rule in payload["safety_rules"])
+    assert "구매 여정" in payload["analysis_prefill"]
+    assert "SpecPilot AI 구매 여정" in payload["share_copy"]
+    assert payload["next_actions"]
+
+    blocked = client.post(
+        "/public/purchase-journey-kit",
+        json={
+            "category": "laptop",
+            "buyer_question": "해외 리퍼 노트북이 싸서 바로 사도 돼?",
+            "product_title": "해외 리퍼 노트북",
+            "seller_name": "Open Market",
+            "listing_text": "해외 리퍼 반품 불가 AS 불가 RAM 16GB SSD 512GB",
+            "review_snippets": [],
+            "budget_krw": 1_500_000,
+            "final_price_krw": 1_680_000,
+            "purchase_stage": "checkout",
+            "missing_evidence": ["반품 불가", "AS 불가"],
+        },
+    )
+    assert blocked.status_code == 200
+    blocked_payload = blocked.json()
+    assert blocked_payload["journey_status"] == "blocker"
+    assert blocked_payload["current_stage"] == "blocked_risk_review"
+    assert any(step["status"] == "blocker" for step in blocked_payload["steps"])
+    assert blocked_payload["final_decision_prefill"]["blocker_reasons"]
+
+
 def test_public_reviewer_quick_card_kit_turns_purchase_into_fast_vote() -> None:
     response = client.post(
         "/public/reviewer-quick-card-kit",

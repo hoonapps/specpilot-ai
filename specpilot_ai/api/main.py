@@ -150,6 +150,7 @@ from specpilot_ai.core.models import (
     PublicPurchaseAftercareKit,
     PublicPurchaseApprovalBriefKit,
     PublicPurchaseExecutionKit,
+    PublicPurchaseJourneyKit,
     PublicPurchaseQuestionTriageKit,
     PublicReferralLaunchKit,
     PublicReferralLeaderboard,
@@ -171,6 +172,7 @@ from specpilot_ai.core.models import (
     PurchaseApprovalBriefRequest,
     PurchaseDecisionBoard,
     PurchaseExecutionKitRequest,
+    PurchaseJourneyKitRequest,
     PurchaseLink,
     PurchaseLinkGovernance,
     PurchaseLinkRequest,
@@ -281,6 +283,7 @@ from specpilot_ai.services.product_page_evidence import build_public_product_pag
 from specpilot_ai.services.purchase_aftercare import build_public_purchase_aftercare_kit
 from specpilot_ai.services.purchase_approval import build_public_purchase_approval_brief_kit
 from specpilot_ai.services.purchase_execution import build_public_purchase_execution_kit
+from specpilot_ai.services.purchase_journey import build_public_purchase_journey_kit
 from specpilot_ai.services.purchase_question_triage import (
     build_public_purchase_question_triage_kit,
 )
@@ -1572,6 +1575,16 @@ def public_final_decision_kit(
     request: FinalDecisionKitRequest,
 ) -> PublicFinalDecisionKit:
     return build_public_final_decision_kit(request)
+
+
+@app.post(
+    "/public/purchase-journey-kit",
+    response_model=PublicPurchaseJourneyKit,
+)
+def public_purchase_journey_kit(
+    request: PurchaseJourneyKitRequest,
+) -> PublicPurchaseJourneyKit:
+    return build_public_purchase_journey_kit(request)
 
 
 @app.post(

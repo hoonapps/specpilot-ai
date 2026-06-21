@@ -550,6 +550,26 @@ CHECKS = (
         ),
     ),
     SmokeCheck(
+        name="public-purchase-journey-kit",
+        method="POST",
+        path="/public/purchase-journey-kit",
+        required_keys=(
+            "kit_version",
+            "journey_status",
+            "journey_score",
+            "current_stage",
+            "steps",
+            "route_cards",
+            "required_inputs",
+            "safety_rules",
+            "triage_prefill",
+            "review_risk_prefill",
+            "final_decision_prefill",
+            "analysis_prefill",
+            "share_copy",
+        ),
+    ),
+    SmokeCheck(
         name="public-reviewer-quick-card-kit",
         method="POST",
         path="/public/reviewer-quick-card-kit",
@@ -1552,6 +1572,30 @@ def run_smoke() -> list[dict[str, Any]]:
                 "warning_reasons": ["팬 소음 반복 후기 확인 필요"],
                 "seller_questions": ["실제 출고 사양이 장바구니 옵션과 같은가요?"],
                 "decision_deadline": "오늘 22시 전",
+                "share_audience": "family",
+                "source": "release_smoke",
+            }
+        if check.name == "public-purchase-journey-kit":
+            json_body = {
+                "category": "desktop_pc",
+                "buyer_question": "이 RTX 4070 SUPER 견적 오늘 결제해도 될까요?",
+                "product_title": "Creator RTX 4070 SUPER Build",
+                "seller_name": "PC Mall",
+                "listing_text": (
+                    "RTX 4070 SUPER Ryzen 7 RAM 32GB SSD 1TB Windows 11 "
+                    "국내 AS 24개월 반품 14일 카드 할인 최종가"
+                ),
+                "review_snippets": [
+                    "성능은 좋은데 팬 소음이 있다는 후기가 있음",
+                    "배송은 빠르고 조립 상태는 만족",
+                    "발열은 게임 중 조금 높다는 의견",
+                ],
+                "budget_krw": 2_200_000,
+                "final_price_krw": 2_165_000,
+                "purchase_stage": "checkout",
+                "ready_evidence": ["최종 결제 금액", "옵션명", "국내 AS 24개월"],
+                "missing_evidence": ["배송 예정일"],
+                "urgency": "오늘 22시 전",
                 "share_audience": "family",
                 "source": "release_smoke",
             }

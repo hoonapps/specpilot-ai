@@ -3077,6 +3077,70 @@ class PublicFinalDecisionKit(BaseModel):
     next_actions: list[str] = Field(default_factory=list)
 
 
+class PurchaseJourneyKitRequest(BaseModel):
+    category: Category = Category.desktop_pc
+    buyer_question: str = "이 컴퓨터 지금 결제해도 될까요?"
+    product_title: str = "구매 후보"
+    seller_name: str = "판매자"
+    listing_text: str = ""
+    review_snippets: list[str] = Field(default_factory=list)
+    budget_krw: int = Field(default=2_200_000, ge=300_000, le=200_000_000)
+    final_price_krw: int | None = Field(default=None, ge=0, le=200_000_000)
+    purchase_stage: str = "checkout"
+    ready_evidence: list[str] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=list)
+    urgency: str = "오늘 결제 전"
+    share_audience: str = "family"
+    source: str = "web"
+
+
+class PurchaseJourneyStep(BaseModel):
+    step_id: str
+    label: str
+    status: CheckStatus
+    order: int = Field(ge=1)
+    kit_path: str
+    why_now: str
+    required_input: str
+    success_rule: str
+    next_action: str
+
+
+class PurchaseJourneyRouteCard(BaseModel):
+    route_id: str
+    label: str
+    status: CheckStatus
+    cta_label: str
+    cta_path: str
+    prefill_hint: str
+
+
+class PublicPurchaseJourneyKit(BaseModel):
+    kit_version: str = "specpilot.public_purchase_journey_kit.v1"
+    generated_at: str
+    category: Category
+    product_title: str
+    seller_name: str
+    journey_status: CheckStatus
+    journey_score: int = Field(ge=0, le=100)
+    current_stage: str
+    headline: str
+    summary: str
+    primary_action: str
+    steps: list[PurchaseJourneyStep] = Field(default_factory=list)
+    route_cards: list[PurchaseJourneyRouteCard] = Field(default_factory=list)
+    required_inputs: list[str] = Field(default_factory=list)
+    safety_rules: list[str] = Field(default_factory=list)
+    triage_prefill: PurchaseQuestionTriageRequest
+    review_risk_prefill: ReviewRiskRequest
+    final_decision_prefill: FinalDecisionKitRequest
+    analysis_prefill: str
+    share_copy: str
+    primary_cta_label: str = "구매 여정 기준으로 분석 시작"
+    primary_cta_path: str = "#analysis"
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class ReviewerVoteOption(BaseModel):
     vote_id: str
     label: str
