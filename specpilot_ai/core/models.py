@@ -2470,6 +2470,71 @@ class PublicCheckoutLockKit(BaseModel):
     next_actions: list[str] = Field(default_factory=list)
 
 
+class DecisionDefenseAlternative(BaseModel):
+    title: str
+    price_krw: int | None = Field(default=None, ge=0, le=200_000_000)
+    reason_not_selected: str = ""
+
+
+class DecisionDefenseRequest(BaseModel):
+    category: Category = Category.desktop_pc
+    product_title: str = "구매 후보"
+    seller_name: str = ""
+    decision: str = "verify"
+    budget_krw: int = Field(default=2_200_000, ge=300_000, le=30_000_000)
+    final_price_krw: int | None = Field(default=None, ge=0, le=200_000_000)
+    confidence_score: float = Field(default=78, ge=0, le=100)
+    purpose: str = "qhd_creator"
+    audience: str = "family"
+    key_reasons: list[str] = Field(default_factory=list)
+    watchouts: list[str] = Field(default_factory=list)
+    evidence_ready: list[str] = Field(default_factory=list)
+    alternatives: list[DecisionDefenseAlternative] = Field(default_factory=list, max_length=5)
+    objection_focus: list[str] = Field(default_factory=list)
+    source: str = "web"
+
+
+class DecisionDefenseObjection(BaseModel):
+    objection_id: str
+    question: str
+    status: CheckStatus
+    answer: str
+    proof_points: list[str] = Field(default_factory=list)
+    counter_condition: str
+
+
+class DecisionDefenseComparison(BaseModel):
+    criterion: str
+    selected_choice: str
+    alternative_view: str
+    reviewer_takeaway: str
+
+
+class PublicDecisionDefenseKit(BaseModel):
+    kit_version: str = "specpilot.public_decision_defense_kit.v1"
+    generated_at: str
+    category: Category
+    product_title: str
+    seller_name: str
+    decision: str
+    audience: str
+    defense_status: CheckStatus
+    defense_score: int = Field(ge=0, le=100)
+    headline: str
+    summary: str
+    reviewer_brief: str
+    objections: list[DecisionDefenseObjection] = Field(default_factory=list)
+    comparisons: list[DecisionDefenseComparison] = Field(default_factory=list)
+    proof_checklist: list[str] = Field(default_factory=list)
+    reviewer_questions: list[str] = Field(default_factory=list)
+    copy_variants: list[ApprovalCopyVariant] = Field(default_factory=list)
+    analysis_prefill: str
+    share_copy: str
+    primary_cta_label: str = "방어 브리프로 분석 시작"
+    primary_cta_path: str = "#analysis"
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class SpecRescueRequest(BaseModel):
     category: Category = Category.desktop_pc
     product_title: str = "구매 후보"

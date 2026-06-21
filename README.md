@@ -69,6 +69,7 @@ SpecPilot AI는 최저가 링크만 보여주는 쇼핑 도구가 아닙니다. 
 - 공개 후보 비교 스냅샷: 데스크톱/노트북 후보 5개를 가격, 목적 적합도, 리뷰 신뢰, 구매 안정성으로 정렬하고 예산/성능/안전 우선 대안 시나리오를 제공
 - 공개 커스텀 후보 비교 결정 키트: 사용자가 붙여 넣은 실제 후보 2~6개를 가격, 목적 적합도, 증거, 보증/반품, 재고, 위험 조건으로 랭킹하고 1순위/보류/제외 판단을 생성
 - 공개 체크아웃 잠금 검수 키트: 커스텀 후보 비교에서 고른 1순위의 상품명, 판매자, 잠금가, 사양, 보증/반품 기준을 최종 결제 화면과 대조해 locked/verify/blocked 판정과 구매 실행 prefill을 생성
+- 공개 구매 결정 방어 브리프: 고른 1순위 후보를 가족, 팀, 커뮤니티에 공유할 때 나올 가격/대체 후보/용도/리스크/구매 타이밍 반박 질문과 답변, 증거 체크리스트, 채널별 복사 문구를 생성
 - 공개 구매 타이밍 윈도우: 후보별 현재가, 목표가, 적정가 밴드, 변동 리스크, 결제 트리거를 공개 화면에서 즉시 결제/가격 대기로 분리
 - 공개 목표가 감시 키트: 구매 타이밍 결과를 알림 기준가, 감시 주기, 알림 문구, 결제 판단 규칙, 대체 행동으로 변환
 - 공개 구매 후 케어 키트: 구매일, 배송완료일, 최종 결제 금액, 이슈를 받아 반품/교환 마감, 보증 만료, 초기 불량 대응, 구매 결과 기록 prefill을 제공
@@ -686,6 +687,38 @@ curl -X POST http://127.0.0.1:8000/public/checkout-lock-kit \
     "checkout_quantity": 1,
     "payment_method": "카드 결제",
     "evidence_text": "재고 있음, 오늘 출고, AS 24개월, 반품 14일, 무료배송"
+  }'
+```
+
+공개 구매 결정 방어 브리프는 고른 후보를 가족, 팀, 커뮤니티에 공유했을 때 받을 반대 질문을 먼저 정리해 왜 이 선택이 납득 가능한지, 어떤 조건이면 보류해야 하는지, 어떤 증거를 붙여야 하는지 알려줍니다.
+
+```bash
+curl -X POST http://127.0.0.1:8000/public/decision-defense-kit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "category": "desktop_pc",
+    "product_title": "Creator RTX 4070 SUPER Build",
+    "seller_name": "PC Mall",
+    "decision": "verify",
+    "budget_krw": 2200000,
+    "final_price_krw": 2150000,
+    "confidence_score": 86,
+    "purpose": "QHD 게임과 영상 편집",
+    "audience": "community",
+    "key_reasons": [
+      "RTX 4070 SUPER와 RAM 32GB가 목적에 맞음",
+      "예산 안에서 Windows 11과 국내 AS가 포함됨",
+      "해외 리퍼 후보보다 반품/보증 조건이 안전함"
+    ],
+    "watchouts": ["배송 예정일 캡처 필요", "쿠폰 적용 후 최종가 재확인"],
+    "evidence_ready": ["최종 결제 금액", "옵션명", "AS 24개월", "반품 14일"],
+    "alternatives": [
+      {
+        "title": "Budget RTX 4060 Build",
+        "price_krw": 1730000,
+        "reason_not_selected": "GPU와 RAM이 목적 대비 부족하고 FreeDOS 추가 비용이 있음"
+      }
+    ]
   }'
 ```
 
@@ -1893,6 +1926,7 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 - `/public/purchase-execution-kit`: 공개 최종가, 예산, blocker/warning, 누락 증거, 판매자 질문을 결제 전 실행 단계, 증거 게이트, 중단 조건, 채널별 공유 문구로 변환
 - `/public/custom-candidate-decision-kit`: 공개 실제 후보 2~6개를 가격, 목적 적합도, 증거, 보증/반품, 재고, 위험 조건으로 랭킹하고 1순위/보류/제외 판단, 판매자 질문, 분석 prefill로 변환
 - `/public/checkout-lock-kit`: 공개 후보 비교에서 고른 1순위의 잠금가/사양/판매자/보증 기준을 최종 결제 화면과 대조해 locked/verify/blocked, 중단 조건, 캡처 체크리스트, 구매 실행 prefill로 변환
+- `/public/decision-defense-kit`: 공개 1순위 구매 결정을 가족/팀/커뮤니티에 공유하기 전 가격, 더 싼 후보, 용도 적합도, 리스크, 구매 타이밍 반박 질문과 방어 답변, 증거 체크리스트, 채널별 복사 문구로 변환
 - `/public/shopping-cart-intake-kit`: 공개 쇼핑몰 장바구니 텍스트/항목을 총액, 예산 차이, 필수 슬롯 누락, 위험 조건, 옵션/사양 검수 prefill, 구매 승인 prefill로 변환
 - `/public/listing-decoder-kit`: 공개 쇼핑몰 상품명/옵션명에서 핵심 사양과 구매 조건 위험어를 구조화하고 검수 prefill, 판매자 질문, 공유 문구 조회
 - `/public/spec-risk-scanner`, `/public/spec-risk-scanner/result`: 공개 옵션/사양 빠른 검수 메타와 결제 전 예산 초과, CPU/GPU/RAM/SSD/OS 불일치, 배송/반품/AS 증거 누락 판정, 구매 세이프티 브리프, 판매자 질문, 승인 요약, 캡처 체크리스트 조회

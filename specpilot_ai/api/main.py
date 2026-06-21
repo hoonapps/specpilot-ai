@@ -55,6 +55,7 @@ from specpilot_ai.core.models import (
     CompletionReportTemplateRequest,
     CustomCandidateDecisionRequest,
     DataGovernanceDashboard,
+    DecisionDefenseRequest,
     DemoScenarioGallery,
     FeedbackRecord,
     FeedbackRequest,
@@ -113,6 +114,7 @@ from specpilot_ai.core.models import (
     PublicConversionBoard,
     PublicCustomCandidateDecisionKit,
     PublicDealTimingWindow,
+    PublicDecisionDefenseKit,
     PublicFirstBootSetupKit,
     PublicLaunchActionRouter,
     PublicLaunchObjectionKit,
@@ -224,6 +226,7 @@ from specpilot_ai.services.custom_candidate_decision import (
     build_public_custom_candidate_decision_kit,
 )
 from specpilot_ai.services.deal_timing import build_public_deal_timing_window
+from specpilot_ai.services.decision_defense import build_public_decision_defense_kit
 from specpilot_ai.services.demo_gallery import build_demo_scenario_gallery
 from specpilot_ai.services.first_boot_setup import build_public_first_boot_setup_kit
 from specpilot_ai.services.intake import diagnose_intake
@@ -1426,6 +1429,16 @@ def public_checkout_lock_kit(
     request: CheckoutLockRequest,
 ) -> PublicCheckoutLockKit:
     return build_public_checkout_lock_kit(request)
+
+
+@app.post(
+    "/public/decision-defense-kit",
+    response_model=PublicDecisionDefenseKit,
+)
+def public_decision_defense_kit(
+    request: DecisionDefenseRequest,
+) -> PublicDecisionDefenseKit:
+    return build_public_decision_defense_kit(request)
 
 
 @app.post(

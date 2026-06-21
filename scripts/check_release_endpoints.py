@@ -214,6 +214,23 @@ CHECKS = (
         ),
     ),
     SmokeCheck(
+        name="public-decision-defense-kit",
+        method="POST",
+        path="/public/decision-defense-kit",
+        required_keys=(
+            "kit_version",
+            "defense_status",
+            "defense_score",
+            "reviewer_brief",
+            "objections",
+            "comparisons",
+            "proof_checklist",
+            "reviewer_questions",
+            "copy_variants",
+            "share_copy",
+        ),
+    ),
+    SmokeCheck(
         name="public-purchase-aftercare-kit",
         method="POST",
         path="/public/purchase-aftercare-kit",
@@ -889,6 +906,34 @@ def run_smoke() -> list[dict[str, Any]]:
                 "checkout_quantity": 1,
                 "payment_method": "카드 결제",
                 "evidence_text": "재고 있음, 오늘 출고, AS 24개월, 반품 14일, 무료배송",
+                "source": "release_smoke",
+            }
+        if check.name == "public-decision-defense-kit":
+            json_body = {
+                "category": "desktop_pc",
+                "product_title": "Creator RTX 4070 SUPER Build",
+                "seller_name": "PC Mall",
+                "decision": "verify",
+                "budget_krw": 2_200_000,
+                "final_price_krw": 2_150_000,
+                "confidence_score": 86,
+                "purpose": "QHD 게임과 영상 편집",
+                "audience": "community",
+                "key_reasons": [
+                    "RTX 4070 SUPER와 RAM 32GB가 목적에 맞음",
+                    "예산 안에서 Windows 11과 국내 AS가 포함됨",
+                    "해외 리퍼 후보보다 반품/보증 조건이 안전함",
+                ],
+                "watchouts": ["배송 예정일 캡처 필요", "쿠폰 적용 후 최종가 재확인"],
+                "evidence_ready": ["최종 결제 금액", "옵션명", "AS 24개월", "반품 14일"],
+                "alternatives": [
+                    {
+                        "title": "Budget RTX 4060 Build",
+                        "price_krw": 1_730_000,
+                        "reason_not_selected": "GPU와 RAM이 목적 대비 부족하고 FreeDOS 추가 비용이 있음",
+                    }
+                ],
+                "objection_focus": ["price", "cheaper_alternative", "risk"],
                 "source": "release_smoke",
             }
         if check.name == "public-purchase-aftercare-kit":

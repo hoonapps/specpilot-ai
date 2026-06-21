@@ -1801,6 +1801,94 @@ def test_public_checkout_lock_kit_compares_winner_to_final_checkout() -> None:
     assert any("결제하지" in action for action in blocked_payload["next_actions"])
 
 
+def test_public_decision_defense_kit_prepares_reviewer_objections() -> None:
+    response = client.post(
+        "/public/decision-defense-kit",
+        json={
+            "category": "desktop_pc",
+            "product_title": "Creator RTX 4070 SUPER Build",
+            "seller_name": "PC Mall",
+            "decision": "verify",
+            "budget_krw": 2_200_000,
+            "final_price_krw": 2_150_000,
+            "confidence_score": 86,
+            "purpose": "QHD 게임과 영상 편집",
+            "audience": "community",
+            "key_reasons": [
+                "RTX 4070 SUPER와 RAM 32GB가 목적에 맞음",
+                "예산 안에서 Windows 11과 국내 AS가 포함됨",
+                "해외 리퍼 후보보다 반품/보증 조건이 안전함",
+            ],
+            "watchouts": ["배송 예정일 캡처 필요", "쿠폰 적용 후 최종가 재확인"],
+            "evidence_ready": ["최종 결제 금액", "옵션명", "AS 24개월", "반품 14일"],
+            "alternatives": [
+                {
+                    "title": "Budget RTX 4060 Build",
+                    "price_krw": 1_730_000,
+                    "reason_not_selected": "GPU와 RAM이 목적 대비 부족하고 FreeDOS 추가 비용이 있음",
+                }
+            ],
+            "objection_focus": ["price", "cheaper_alternative", "risk"],
+            "source": "pytest",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["kit_version"] == "specpilot.public_decision_defense_kit.v1"
+    assert payload["category"] == "desktop_pc"
+    assert payload["product_title"] == "Creator RTX 4070 SUPER Build"
+    assert payload["decision"] == "verify"
+    assert payload["audience"] == "커뮤니티 검토자"
+    assert payload["defense_status"] == "warning"
+    assert payload["defense_score"] >= 70
+    assert "조건부" in payload["headline"]
+    assert "방어 점수" in payload["summary"]
+    assert "RTX 4070 SUPER" in payload["reviewer_brief"]
+    assert {item["objection_id"] for item in payload["objections"]} >= {
+        "price",
+        "cheaper_alternative",
+        "risk",
+    }
+    cheaper = next(
+        item for item in payload["objections"] if item["objection_id"] == "cheaper_alternative"
+    )
+    assert "Budget RTX 4060 Build" in cheaper["answer"]
+    assert payload["comparisons"]
+    assert any("최종 결제 금액" in item for item in payload["proof_checklist"])
+    assert any("더 싼 후보" in question for question in payload["reviewer_questions"])
+    assert {variant["channel"] for variant in payload["copy_variants"]} == {
+        "kakao",
+        "team",
+        "community",
+    }
+    assert "구매 결정 방어 브리프" in payload["analysis_prefill"]
+    assert "SpecPilot AI 구매 결정 방어 브리프" in payload["share_copy"]
+    assert payload["primary_cta_path"] == "#analysis"
+    assert payload["next_actions"]
+
+    blocked = client.post(
+        "/public/decision-defense-kit",
+        json={
+            "category": "laptop",
+            "product_title": "해외 리퍼 노트북",
+            "decision": "hold",
+            "budget_krw": 1_600_000,
+            "final_price_krw": 1_820_000,
+            "confidence_score": 45,
+            "purpose": "대학생 휴대용",
+            "watchouts": ["예산 초과", "해외 리퍼", "반품 불가", "AS 불가"],
+            "evidence_ready": ["상품명"],
+        },
+    )
+    assert blocked.status_code == 200
+    blocked_payload = blocked.json()
+    assert blocked_payload["defense_status"] == "blocker"
+    assert blocked_payload["defense_score"] < 50
+    assert any(item["status"] == "blocker" for item in blocked_payload["objections"])
+    assert any("blocker" in action for action in blocked_payload["next_actions"])
+
+
 def test_public_buyer_trust_kit_summarizes_trust_center_for_launch() -> None:
     response = client.get("/public/buyer-trust-kit?limit=4")
 
