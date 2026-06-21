@@ -1589,6 +1589,72 @@ def test_public_benchmark_validation_kit_separates_normal_and_defect_evidence() 
     assert "렌더링 중 꺼짐" in defect_payload["seller_message"]
 
 
+def test_public_defect_claim_kit_builds_claim_packet_and_copy() -> None:
+    response = client.post(
+        "/public/defect-claim-kit",
+        json={
+            "category": "laptop",
+            "product_title": "CreatorBook 16",
+            "seller_name": "Laptop Store",
+            "manufacturer_name": "Maker",
+            "purchase_date": "2026-06-01",
+            "delivered_date": "2026-06-19",
+            "return_deadline": "2026-06-26",
+            "warranty_deadline": "2027-06-01",
+            "final_paid_price_krw": 1_780_000,
+            "order_reference_masked": "ORD***123",
+            "preferred_resolution": "exchange",
+            "issue_summary": "벤치마크 중 꺼짐과 화면 깜빡임",
+            "observed_issues": ["렌더링 중 꺼짐", "화면 깜빡임", "고주파"],
+            "failed_checks": ["GPU 점수 59%", "CPU 106도"],
+            "benchmark_status": "blocker",
+            "evidence_items": ["결제 영수증", "시리얼 사진", "꺼짐 재현 영상", "온도 그래프"],
+            "seller_responses": ["판매자 1차 문의 접수"],
+            "policy_text": "초기 불량 교환 가능",
+            "source": "pytest",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["kit_version"] == "specpilot.public_defect_claim_kit.v1"
+    assert payload["claim_status"] == "blocker"
+    assert payload["claim_score"] >= 50
+    assert payload["urgency_label"] == "오늘 접수"
+    assert payload["primary_cta_path"] == "#analysis"
+    assert {item["item_id"] for item in payload["timeline"]} >= {
+        "evidence_freeze",
+        "return_deadline",
+        "seller_response",
+        "warranty_deadline",
+    }
+    assert "렌더링 중 꺼짐" in payload["seller_message"]
+    assert "렌더링 중 꺼짐" in payload["manufacturer_message"]
+    assert {message["channel"] for message in payload["messages"]} == {
+        "seller",
+        "manufacturer",
+        "self",
+    }
+    assert any("증거 원본" in step for step in payload["claim_steps"])
+    assert "SpecPilot AI 반품·AS 증거 패킷" in payload["share_copy"]
+
+    gap_response = client.post(
+        "/public/defect-claim-kit",
+        json={
+            "category": "desktop_pc",
+            "product_title": "Quiet PC",
+            "observed_issues": ["팬 소음"],
+            "benchmark_status": "warning",
+            "evidence_items": [],
+        },
+    )
+    assert gap_response.status_code == 200
+    gap_payload = gap_response.json()
+    assert gap_payload["claim_status"] == "warning"
+    assert any("재현 영상" in gap for gap in gap_payload["evidence_gaps"])
+    assert any("보강" in action for action in gap_payload["next_actions"])
+
+
 def test_public_upgrade_readiness_kit_scores_long_term_upgrade_room() -> None:
     response = client.post(
         "/public/upgrade-readiness-kit",

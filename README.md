@@ -773,6 +773,32 @@ curl -X POST http://127.0.0.1:8000/public/benchmark-validation-kit \
   }'
 ```
 
+공개 반품·AS 증거 패키지는 수령 후 이상 증상, 실패 점검, 정책/마감일, 확보한 증거를 판매자/제조사 접수 패킷으로 정리합니다.
+
+```bash
+curl -X POST http://127.0.0.1:8000/public/defect-claim-kit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "category": "laptop",
+    "product_title": "CreatorBook 16",
+    "seller_name": "Laptop Store",
+    "manufacturer_name": "Maker",
+    "purchase_date": "2026-06-01",
+    "delivered_date": "2026-06-19",
+    "return_deadline": "2026-06-26",
+    "warranty_deadline": "2027-06-01",
+    "final_paid_price_krw": 1780000,
+    "order_reference_masked": "ORD***123",
+    "preferred_resolution": "exchange",
+    "observed_issues": ["렌더링 중 꺼짐", "화면 깜빡임", "고주파"],
+    "failed_checks": ["GPU 점수 59%", "CPU 106도"],
+    "benchmark_status": "blocker",
+    "evidence_items": ["결제 영수증", "시리얼 사진", "꺼짐 재현 영상", "온도 그래프"],
+    "seller_responses": ["판매자 1차 문의 접수"],
+    "policy_text": "초기 불량 교환 가능"
+  }'
+```
+
 공개 대체 후보 rescue 키트는 장바구니 검수에서 보류 또는 확인 필요가 나온 사용자가 바로 이탈하지 않도록 같은 예산의 대체 후보, 판매자 확인 메시지, 검색 문구, 공유 문구를 반환합니다.
 
 ```bash
@@ -2123,6 +2149,7 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 - `/public/outcome-share-card-kit`: 공개 실제 구매/지연/이탈/반품 결과, 계획가 대비 최종가 차이, 만족도, 이슈, 배운 점을 proof 점수, 공유 카드, 학습 신호로 변환
 - `/public/first-boot-setup-kit`: 공개 첫 부팅 OS/포트/디스플레이/드라이버/벤치마크/보증 등록 상태를 세팅 점수, 점검표, 문의 문구, 분석 prefill로 변환
 - `/public/benchmark-validation-kit`: 공개 CPU/GPU/SSD 벤치마크, 최고 온도, 스로틀링, 꺼짐 증상, 드라이버 확인 여부를 성능 점수, 반품/AS 증거, 판매자 문의 문구로 변환
+- `/public/defect-claim-kit`: 공개 수령 후 이상 증상, 실패 점검, 반품/보증 마감, 확보 증거를 반품·AS 접수 타임라인, 증거 보강 목록, 판매자/제조사 문의 문구로 변환
 - `/public/spec-rescue-kit`: 공개 장바구니 보류/확인 필요 결과를 예산 내 대체 후보 3개, 판매자 확인 메시지, 검색 문구, 분석 prefill, 공유 문구로 변환
 - `/public/candidate-compare`: 공개 후보 5개 비교표, 비교 축별 승자, 예산/성능/안전 우선 대안 시나리오, 분석 prefill, 공유 문구 조회
 - `/public/deal-timing-window`: 공개 후보별 현재가, 목표가, 적정가 밴드, 재고/쿠폰 변동 리스크, 결제 트리거, 목표가 알림용 공유 문구 조회

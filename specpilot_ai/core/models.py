@@ -2307,6 +2307,69 @@ class PublicBenchmarkValidationKit(BaseModel):
     next_actions: list[str] = Field(default_factory=list)
 
 
+class DefectClaimRequest(BaseModel):
+    category: Category = Category.desktop_pc
+    product_title: str = "문제 발생 제품"
+    seller_name: str = "판매자"
+    manufacturer_name: str = "제조사"
+    purchase_date: str = ""
+    delivered_date: str = ""
+    return_deadline: str = ""
+    warranty_deadline: str = ""
+    final_paid_price_krw: int | None = Field(default=None, ge=0, le=200_000_000)
+    order_reference_masked: str = ""
+    preferred_resolution: str = "exchange"
+    issue_summary: str = ""
+    observed_issues: list[str] = Field(default_factory=list)
+    failed_checks: list[str] = Field(default_factory=list)
+    benchmark_status: CheckStatus = CheckStatus.warning
+    evidence_items: list[str] = Field(default_factory=list)
+    seller_responses: list[str] = Field(default_factory=list)
+    policy_text: str = ""
+    source: str = "web"
+
+
+class DefectClaimTimelineItem(BaseModel):
+    item_id: str
+    label: str
+    status: CheckStatus
+    due_date: str
+    action: str
+
+
+class DefectClaimMessage(BaseModel):
+    channel: str
+    label: str
+    copy_text: str
+    cta_label: str
+
+
+class PublicDefectClaimKit(BaseModel):
+    kit_version: str = "specpilot.public_defect_claim_kit.v1"
+    generated_at: str
+    category: Category
+    product_title: str
+    seller_name: str
+    manufacturer_name: str
+    claim_status: CheckStatus
+    claim_score: int = Field(ge=0, le=100)
+    urgency_label: str
+    headline: str
+    summary: str
+    timeline: list[DefectClaimTimelineItem] = Field(default_factory=list)
+    evidence_checklist: list[str] = Field(default_factory=list)
+    evidence_gaps: list[str] = Field(default_factory=list)
+    claim_steps: list[str] = Field(default_factory=list)
+    seller_message: str
+    manufacturer_message: str
+    messages: list[DefectClaimMessage] = Field(default_factory=list)
+    analysis_prefill: str
+    share_copy: str
+    primary_cta_label: str = "반품·AS 증거로 분석 시작"
+    primary_cta_path: str = "#analysis"
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class UpgradeReadinessRequest(BaseModel):
     category: Category = Category.desktop_pc
     product_title: str = "구매 후보"

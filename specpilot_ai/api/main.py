@@ -60,6 +60,7 @@ from specpilot_ai.core.models import (
     DataGovernanceDashboard,
     DealSanityRequest,
     DecisionDefenseRequest,
+    DefectClaimRequest,
     DemoScenarioGallery,
     FeedbackRecord,
     FeedbackRequest,
@@ -124,6 +125,7 @@ from specpilot_ai.core.models import (
     PublicDealSanityKit,
     PublicDealTimingWindow,
     PublicDecisionDefenseKit,
+    PublicDefectClaimKit,
     PublicFirstBootSetupKit,
     PublicLaunchActionRouter,
     PublicLaunchObjectionKit,
@@ -245,6 +247,7 @@ from specpilot_ai.services.custom_candidate_decision import (
 from specpilot_ai.services.deal_sanity import build_public_deal_sanity_kit
 from specpilot_ai.services.deal_timing import build_public_deal_timing_window
 from specpilot_ai.services.decision_defense import build_public_decision_defense_kit
+from specpilot_ai.services.defect_claim import build_public_defect_claim_kit
 from specpilot_ai.services.demo_gallery import build_demo_scenario_gallery
 from specpilot_ai.services.first_boot_setup import build_public_first_boot_setup_kit
 from specpilot_ai.services.intake import diagnose_intake
@@ -1422,6 +1425,16 @@ def public_benchmark_validation_kit(
     request: BenchmarkValidationRequest,
 ) -> PublicBenchmarkValidationKit:
     return build_public_benchmark_validation_kit(request)
+
+
+@app.post(
+    "/public/defect-claim-kit",
+    response_model=PublicDefectClaimKit,
+)
+def public_defect_claim_kit(
+    request: DefectClaimRequest,
+) -> PublicDefectClaimKit:
+    return build_public_defect_claim_kit(request)
 
 
 @app.post(
