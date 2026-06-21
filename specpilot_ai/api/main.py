@@ -97,6 +97,7 @@ from specpilot_ai.core.models import (
     OperationsMetrics,
     OpsLearningDashboard,
     OpsRegressionDashboard,
+    OutcomeShareCardRequest,
     OwnershipCostRequest,
     PriceAlertPlan,
     PriceBreakdownRequest,
@@ -132,6 +133,7 @@ from specpilot_ai.core.models import (
     PublicLaunchSmokeDashboard,
     PublicListingDecoderKit,
     PublicMistakeCostCalculator,
+    PublicOutcomeShareCardKit,
     PublicOwnershipCostKit,
     PublicPriceBreakdownKit,
     PublicPriceWatchKit,
@@ -253,6 +255,7 @@ from specpilot_ai.services.mistake_cost import (
     estimate_mistake_cost,
 )
 from specpilot_ai.services.onboarding import purchase_onboarding_playbooks
+from specpilot_ai.services.outcome_share_card import build_public_outcome_share_card_kit
 from specpilot_ai.services.ownership_cost import build_public_ownership_cost_kit
 from specpilot_ai.services.price_breakdown import build_public_price_breakdown_kit
 from specpilot_ai.services.price_watch import build_public_price_watch_kit
@@ -1386,6 +1389,16 @@ def public_purchase_aftercare_kit(
     request: PurchaseAftercareRequest,
 ) -> PublicPurchaseAftercareKit:
     return build_public_purchase_aftercare_kit(request)
+
+
+@app.post(
+    "/public/outcome-share-card-kit",
+    response_model=PublicOutcomeShareCardKit,
+)
+def public_outcome_share_card_kit(
+    request: OutcomeShareCardRequest,
+) -> PublicOutcomeShareCardKit:
+    return build_public_outcome_share_card_kit(request)
 
 
 @app.post(

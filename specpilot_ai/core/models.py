@@ -2138,6 +2138,61 @@ class PublicPurchaseAftercareKit(BaseModel):
     next_actions: list[str] = Field(default_factory=list)
 
 
+class OutcomeShareCardRequest(BaseModel):
+    category: Category = Category.desktop_pc
+    product_title: str = "구매 후보"
+    outcome_status: PurchaseOutcomeStatus = PurchaseOutcomeStatus.purchased
+    planned_price_krw: int | None = Field(default=None, ge=0, le=200_000_000)
+    final_paid_price_krw: int | None = Field(default=None, ge=0, le=200_000_000)
+    budget_krw: int | None = Field(default=None, ge=0, le=200_000_000)
+    satisfaction_score: int = Field(default=8, ge=0, le=10)
+    time_to_decide_hours: int | None = Field(default=None, ge=0, le=8_760)
+    issues: list[str] = Field(default_factory=list)
+    saved_reasons: list[str] = Field(default_factory=list)
+    regrets: list[str] = Field(default_factory=list)
+    next_recommendation: str = "구매 전 증거 캡처"
+    share_audience: str = "community"
+    source: str = "web"
+
+
+class OutcomeProofMetric(BaseModel):
+    metric_id: str
+    label: str
+    value: str
+    detail: str
+    status: CheckStatus
+
+
+class OutcomeShareVariant(BaseModel):
+    channel: str
+    label: str
+    copy_text: str
+    cta_label: str
+
+
+class PublicOutcomeShareCardKit(BaseModel):
+    kit_version: str = "specpilot.public_outcome_share_card_kit.v1"
+    generated_at: str
+    category: Category
+    product_title: str
+    outcome_status: PurchaseOutcomeStatus
+    proof_status: CheckStatus
+    proof_score: int = Field(ge=0, le=100)
+    price_delta_krw: int | None = None
+    headline: str
+    summary: str
+    proof_metrics: list[OutcomeProofMetric] = Field(default_factory=list)
+    proof_points: list[str] = Field(default_factory=list)
+    caution_notes: list[str] = Field(default_factory=list)
+    share_variants: list[OutcomeShareVariant] = Field(default_factory=list)
+    learning_signals: list[str] = Field(default_factory=list)
+    analysis_prefill: str
+    share_copy: str
+    primary_cta_label: str = "구매 결과로 분석 시작"
+    primary_cta_path: str = "#analysis"
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class FirstBootSetupRequest(BaseModel):
     category: Category = Category.desktop_pc
     product_title: str = "새 컴퓨터"

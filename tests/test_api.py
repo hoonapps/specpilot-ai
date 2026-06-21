@@ -1369,6 +1369,81 @@ def test_public_purchase_aftercare_kit_closes_return_and_outcome_loop() -> None:
     assert any("반품 또는 교환" in action for action in defect_payload["next_actions"])
 
 
+def test_public_outcome_share_card_kit_turns_purchase_result_into_proof() -> None:
+    response = client.post(
+        "/public/outcome-share-card-kit",
+        json={
+            "category": "desktop_pc",
+            "product_title": "Creator RTX 4070 SUPER Build",
+            "outcome_status": "purchased",
+            "planned_price_krw": 2_200_000,
+            "final_paid_price_krw": 2_165_000,
+            "budget_krw": 2_200_000,
+            "satisfaction_score": 9,
+            "time_to_decide_hours": 18,
+            "issues": [],
+            "saved_reasons": ["최종 결제 금액 캡처", "AS 조건 확인"],
+            "regrets": [],
+            "next_recommendation": "반품 조건과 최종 결제 금액을 먼저 캡처",
+            "share_audience": "community",
+            "source": "pytest",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["kit_version"] == "specpilot.public_outcome_share_card_kit.v1"
+    assert payload["category"] == "desktop_pc"
+    assert payload["outcome_status"] == "purchased"
+    assert payload["proof_status"] == "ok"
+    assert payload["proof_score"] >= 90
+    assert payload["price_delta_krw"] == -35_000
+    assert "공개 proof 카드" in payload["headline"]
+    assert {metric["metric_id"] for metric in payload["proof_metrics"]} == {
+        "outcome",
+        "price_delta",
+        "satisfaction",
+        "decision_time",
+    }
+    assert any("최종 결제 금액 캡처" in point for point in payload["proof_points"])
+    assert {variant["channel"] for variant in payload["share_variants"]} == {
+        "community",
+        "kakao",
+        "team",
+        "email",
+    }
+    assert any("price_delta_krw=-35000" in signal for signal in payload["learning_signals"])
+    assert "SpecPilot AI 구매 결과 공유" in payload["share_copy"]
+    assert payload["primary_cta_path"] == "#analysis"
+    assert any("purchased" in action for action in payload["next_actions"])
+
+    returned = client.post(
+        "/public/outcome-share-card-kit",
+        json={
+            "category": "laptop",
+            "product_title": "CreatorBook 16",
+            "outcome_status": "returned",
+            "planned_price_krw": 1_600_000,
+            "final_paid_price_krw": 1_780_000,
+            "budget_krw": 1_600_000,
+            "satisfaction_score": 3,
+            "time_to_decide_hours": 4,
+            "issues": ["초기 불량", "반품 불가 안내"],
+            "saved_reasons": ["판매자 답변 캡처"],
+            "regrets": ["해외 판매자 AS 조건을 늦게 확인"],
+            "next_recommendation": "해외 판매자와 반품 불가 문구 제외",
+        },
+    )
+    assert returned.status_code == 200
+    returned_payload = returned.json()
+    assert returned_payload["proof_status"] == "blocker"
+    assert returned_payload["proof_score"] < 40
+    assert returned_payload["price_delta_krw"] == 180_000
+    assert any("반품/취소" in metric["value"] for metric in returned_payload["proof_metrics"])
+    assert any("반품/취소 결과" in note for note in returned_payload["caution_notes"])
+    assert any("반품/교환/AS" in action for action in returned_payload["next_actions"])
+
+
 def test_public_first_boot_setup_kit_guides_setup_and_issue_triage() -> None:
     response = client.post(
         "/public/first-boot-setup-kit",

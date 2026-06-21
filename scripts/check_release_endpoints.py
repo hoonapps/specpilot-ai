@@ -284,6 +284,23 @@ CHECKS = (
         ),
     ),
     SmokeCheck(
+        name="public-outcome-share-card-kit",
+        method="POST",
+        path="/public/outcome-share-card-kit",
+        required_keys=(
+            "kit_version",
+            "proof_status",
+            "proof_score",
+            "outcome_status",
+            "price_delta_krw",
+            "proof_metrics",
+            "proof_points",
+            "share_variants",
+            "learning_signals",
+            "share_copy",
+        ),
+    ),
+    SmokeCheck(
         name="public-first-boot-setup-kit",
         method="POST",
         path="/public/first-boot-setup-kit",
@@ -1096,6 +1113,23 @@ def run_smoke() -> list[dict[str, Any]]:
                 "return_window_days": 7,
                 "warranty_months": 12,
                 "issues": [],
+                "source": "release_smoke",
+            }
+        if check.name == "public-outcome-share-card-kit":
+            json_body = {
+                "category": "desktop_pc",
+                "product_title": "Creator RTX 4070 SUPER Build",
+                "outcome_status": "purchased",
+                "planned_price_krw": 2_200_000,
+                "final_paid_price_krw": 2_165_000,
+                "budget_krw": 2_200_000,
+                "satisfaction_score": 9,
+                "time_to_decide_hours": 18,
+                "issues": [],
+                "saved_reasons": ["최종 결제 금액 캡처", "AS 조건 확인"],
+                "regrets": [],
+                "next_recommendation": "반품 조건과 최종 결제 금액을 먼저 캡처",
+                "share_audience": "community",
                 "source": "release_smoke",
             }
         if check.name == "public-first-boot-setup-kit":

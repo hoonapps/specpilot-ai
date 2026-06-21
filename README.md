@@ -704,6 +704,28 @@ curl -X POST http://127.0.0.1:8000/public/purchase-aftercare-kit \
   }'
 ```
 
+공개 구매 결과 공유 카드 키트는 실제 구매/지연/이탈/반품 결과, 최종가 차이, 만족도, 이슈와 배운 점을 커뮤니티에 공유 가능한 proof 카드로 변환합니다.
+
+```bash
+curl -X POST http://127.0.0.1:8000/public/outcome-share-card-kit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "category": "desktop_pc",
+    "product_title": "Creator RTX 4070 SUPER Build",
+    "outcome_status": "purchased",
+    "planned_price_krw": 2200000,
+    "final_paid_price_krw": 2165000,
+    "budget_krw": 2200000,
+    "satisfaction_score": 9,
+    "time_to_decide_hours": 18,
+    "issues": [],
+    "saved_reasons": ["최종 결제 금액 캡처", "AS 조건 확인"],
+    "regrets": [],
+    "next_recommendation": "반품 조건과 최종 결제 금액을 먼저 캡처",
+    "share_audience": "community"
+  }'
+```
+
 공개 첫 부팅 세팅 검수 키트는 컴퓨터나 노트북을 받은 첫날 전원, OS, 드라이버, 디스플레이, 벤치마크, 보증 등록 기준값을 정리합니다.
 
 ```bash
@@ -2071,6 +2093,7 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 - `/public/seller-negotiation-kit`: 공개 현재가, 목표가, 경쟁가, 배송/조립/OS 비용, 재고, 위험 조건을 조건 안전 협상 메시지, 절감 예상, guardrail, 판매자 질문으로 변환
 - `/public/checkout-nudge-kit`: 공개 장바구니 검수 결과를 후속 알림 문구, 다음 행동, 판매자 답변/가격 재확인/구매 결과 회수 단계, 분석 prefill, 대기열 prefill로 변환
 - `/public/purchase-aftercare-kit`: 공개 구매일/배송완료일/최종 결제 금액/이슈를 반품·교환 마감, 보증 만료, 초기 불량 대응, 구매 결과 기록 prefill, 채널별 후속 문구로 변환
+- `/public/outcome-share-card-kit`: 공개 실제 구매/지연/이탈/반품 결과, 계획가 대비 최종가 차이, 만족도, 이슈, 배운 점을 proof 점수, 공유 카드, 학습 신호로 변환
 - `/public/first-boot-setup-kit`: 공개 첫 부팅 OS/포트/디스플레이/드라이버/벤치마크/보증 등록 상태를 세팅 점수, 점검표, 문의 문구, 분석 prefill로 변환
 - `/public/spec-rescue-kit`: 공개 장바구니 보류/확인 필요 결과를 예산 내 대체 후보 3개, 판매자 확인 메시지, 검색 문구, 분석 prefill, 공유 문구로 변환
 - `/public/candidate-compare`: 공개 후보 5개 비교표, 비교 축별 승자, 예산/성능/안전 우선 대안 시나리오, 분석 prefill, 공유 문구 조회
