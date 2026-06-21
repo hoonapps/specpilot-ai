@@ -570,6 +570,25 @@ CHECKS = (
         ),
     ),
     SmokeCheck(
+        name="public-community-reply-kit",
+        method="POST",
+        path="/public/community-reply-kit",
+        required_keys=(
+            "kit_version",
+            "reply_status",
+            "reply_score",
+            "primary_reply",
+            "reply_cards",
+            "risk_flags",
+            "evidence_requests",
+            "posting_rules",
+            "triage_prefill",
+            "journey_prefill",
+            "analysis_prefill",
+            "share_copy",
+        ),
+    ),
+    SmokeCheck(
         name="public-reviewer-quick-card-kit",
         method="POST",
         path="/public/reviewer-quick-card-kit",
@@ -1597,6 +1616,26 @@ def run_smoke() -> list[dict[str, Any]]:
                 "missing_evidence": ["배송 예정일"],
                 "urgency": "오늘 22시 전",
                 "share_audience": "family",
+                "source": "release_smoke",
+            }
+        if check.name == "public-community-reply-kit":
+            json_body = {
+                "category": "desktop_pc",
+                "community_channel": "community",
+                "buyer_question": "이 RTX 4070 SUPER 견적 오늘 결제해도 될까요?",
+                "product_title": "Creator RTX 4070 SUPER Build",
+                "seller_name": "PC Mall",
+                "candidate_summary": (
+                    "RTX 4070 SUPER Ryzen 7 RAM 32GB SSD 1TB Windows 11 "
+                    "국내 AS 24개월 반품 14일 카드 할인 최종가 2,165,000원"
+                ),
+                "budget_krw": 2_200_000,
+                "final_price_krw": 2_165_000,
+                "usage_context": "QHD 편집과 게임",
+                "risk_notes": ["팬 소음 후기가 일부 있음", "배송 예정일 확인 필요"],
+                "ready_evidence": ["최종 결제 금액", "옵션명", "국내 AS 24개월"],
+                "missing_evidence": ["배송 예정일"],
+                "reply_tone": "helpful",
                 "source": "release_smoke",
             }
         if check.name == "public-reviewer-quick-card-kit":

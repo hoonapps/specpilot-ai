@@ -3141,6 +3141,64 @@ class PublicPurchaseJourneyKit(BaseModel):
     next_actions: list[str] = Field(default_factory=list)
 
 
+class CommunityReplyKitRequest(BaseModel):
+    category: Category = Category.desktop_pc
+    community_channel: str = "community"
+    buyer_question: str = "이 컴퓨터 견적 괜찮을까요?"
+    product_title: str = "구매 후보"
+    seller_name: str = "판매자"
+    candidate_summary: str = ""
+    budget_krw: int = Field(default=2_200_000, ge=300_000, le=200_000_000)
+    final_price_krw: int | None = Field(default=None, ge=0, le=200_000_000)
+    usage_context: str = "게임과 작업"
+    risk_notes: list[str] = Field(default_factory=list)
+    ready_evidence: list[str] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=list)
+    reply_tone: str = "helpful"
+    source: str = "web"
+
+
+class CommunityReplyCard(BaseModel):
+    card_id: str
+    label: str
+    status: CheckStatus
+    copy_text: str
+    use_when: str
+
+
+class CommunityEvidenceRequest(BaseModel):
+    evidence_id: str
+    label: str
+    status: CheckStatus
+    reason: str
+    request_text: str
+
+
+class PublicCommunityReplyKit(BaseModel):
+    kit_version: str = "specpilot.public_community_reply_kit.v1"
+    generated_at: str
+    category: Category
+    community_channel: str
+    product_title: str
+    seller_name: str
+    reply_status: CheckStatus
+    reply_score: int = Field(ge=0, le=100)
+    headline: str
+    summary: str
+    primary_reply: str
+    reply_cards: list[CommunityReplyCard] = Field(default_factory=list)
+    risk_flags: list[str] = Field(default_factory=list)
+    evidence_requests: list[CommunityEvidenceRequest] = Field(default_factory=list)
+    posting_rules: list[str] = Field(default_factory=list)
+    triage_prefill: PurchaseQuestionTriageRequest
+    journey_prefill: PurchaseJourneyKitRequest
+    analysis_prefill: str
+    share_copy: str
+    primary_cta_label: str = "커뮤니티 답변 기준으로 분석 시작"
+    primary_cta_path: str = "#analysis"
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class ReviewerVoteOption(BaseModel):
     vote_id: str
     label: str

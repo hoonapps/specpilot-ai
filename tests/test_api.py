@@ -2627,6 +2627,79 @@ def test_public_purchase_journey_kit_orchestrates_public_kits() -> None:
     assert blocked_payload["final_decision_prefill"]["blocker_reasons"]
 
 
+def test_public_community_reply_kit_generates_safe_shareable_answers() -> None:
+    response = client.post(
+        "/public/community-reply-kit",
+        json={
+            "category": "desktop_pc",
+            "community_channel": "community",
+            "buyer_question": "이 RTX 4070 SUPER 견적 오늘 결제해도 될까요?",
+            "product_title": "Creator RTX 4070 SUPER Build",
+            "seller_name": "PC Mall",
+            "candidate_summary": (
+                "RTX 4070 SUPER Ryzen 7 RAM 32GB SSD 1TB Windows 11 "
+                "국내 AS 24개월 반품 14일 카드 할인 최종가 2,165,000원"
+            ),
+            "budget_krw": 2_200_000,
+            "final_price_krw": 2_165_000,
+            "usage_context": "QHD 편집과 게임",
+            "risk_notes": ["팬 소음 후기가 일부 있음", "배송 예정일 확인 필요"],
+            "ready_evidence": ["최종 결제 금액", "옵션명", "국내 AS 24개월"],
+            "missing_evidence": ["배송 예정일"],
+            "reply_tone": "helpful",
+            "source": "pytest",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["kit_version"] == "specpilot.public_community_reply_kit.v1"
+    assert payload["category"] == "desktop_pc"
+    assert payload["community_channel"] == "community"
+    assert payload["reply_status"] == "warning"
+    assert payload["reply_score"] < 100
+    assert "확인" in payload["primary_reply"] or "캡처" in payload["primary_reply"]
+    assert {card["card_id"] for card in payload["reply_cards"]} == {
+        "primary_comment",
+        "short_reply",
+        "checklist_reply",
+    }
+    assert any("팬 소음" in flag for flag in payload["risk_flags"])
+    assert any(item["label"] == "배송 예정일" for item in payload["evidence_requests"])
+    assert any("제휴 링크" in rule for rule in payload["posting_rules"])
+    assert payload["triage_prefill"]["source"] == "community_reply"
+    assert payload["journey_prefill"]["source"] == "community_reply"
+    assert payload["journey_prefill"]["seller_name"] == "PC Mall"
+    assert "커뮤니티 구매 질문" in payload["analysis_prefill"]
+    assert "SpecPilot AI 커뮤니티 구매 답변" in payload["share_copy"]
+    assert payload["next_actions"]
+
+    blocked = client.post(
+        "/public/community-reply-kit",
+        json={
+            "category": "laptop",
+            "community_channel": "kakao",
+            "buyer_question": "해외 리퍼 노트북 반품불가인데 싸면 사도 되나요?",
+            "product_title": "CreatorBook 해외 리퍼",
+            "seller_name": "Open Market",
+            "candidate_summary": "해외 리퍼 반품 불가 AS 불가 FreeDOS RAM 16GB SSD 512GB",
+            "budget_krw": 1_500_000,
+            "final_price_krw": 1_720_000,
+            "usage_context": "개발과 영상 편집",
+            "risk_notes": ["리퍼", "반품 불가", "AS 불가"],
+            "missing_evidence": ["국내 AS 주체", "초기 불량 교환 가능 여부"],
+        },
+    )
+    assert blocked.status_code == 200
+    blocked_payload = blocked.json()
+    assert blocked_payload["reply_status"] == "blocker"
+    assert blocked_payload["reply_score"] <= 52
+    assert "결제 보류" in blocked_payload["primary_reply"]
+    assert any("반품 불가" in flag for flag in blocked_payload["risk_flags"])
+    assert blocked_payload["journey_prefill"]["missing_evidence"]
+    assert any("구매 보류" in action for action in blocked_payload["next_actions"])
+
+
 def test_public_reviewer_quick_card_kit_turns_purchase_into_fast_vote() -> None:
     response = client.post(
         "/public/reviewer-quick-card-kit",

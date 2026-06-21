@@ -67,6 +67,7 @@ SpecPilot AI는 최저가 링크만 보여주는 쇼핑 도구가 아닙니다. 
 - 공개 구매 실행 패키지: 최종가, 예산, blocker/warning, 누락 증거, 판매자 질문을 결제 전 실행 단계, 증거 게이트, 중단 조건, 공유 문구로 변환
 - 공개 최종 구매 판정 키트: 가격, 체크아웃, 호환성, 리뷰, 보증, 증거 상태를 go/verify/hold 최종 판단과 실행/검토 prefill로 압축
 - 공개 구매 여정 오케스트레이터: 질문, 상품명/장바구니 문구, 후기, 최종가를 받아 실행할 공개 키트 순서와 현재 단계, 최종 판정 prefill을 생성
+- 공개 커뮤니티 구매 답변 키트: “이 견적 어때요?” 질문을 커뮤니티/카톡/팀 채팅용 안전 답글, 증거 요청, 구매 여정 prefill로 변환
 - 공개 30초 검토 카드: 공유받은 가족/팀/커뮤니티 검토자가 승인, 증거 요청, 반대/보류 중 하나로 바로 응답할 수 있는 카드와 답장 문구 제공
 - 공개 판매자 조건 협상 키트: 현재가, 목표가, 경쟁가, 배송/조립/OS 비용, 재고, 위험 조건을 조건 안전 협상 메시지와 guardrail로 변환
 - 공개 상품명 해석 키트: 쇼핑몰 상품명/옵션명에서 CPU/GPU/RAM/SSD/OS와 리퍼·전시·해외 조건을 구조화하고 검수 prefill을 제공
@@ -628,6 +629,28 @@ curl -X POST http://127.0.0.1:8000/public/purchase-journey-kit \
     "urgency": "오늘 22시 전",
     "share_audience": "family",
     "source": "release_smoke"
+  }'
+```
+
+공개 커뮤니티 구매 답변 키트는 커뮤니티 글, 카톡 질문, 팀 채팅에 바로 붙여 넣을 수 있는 조건부 답글과 증거 요청을 만들고 질문 라우팅/구매 여정 prefill로 이어줍니다.
+
+```bash
+curl -X POST http://127.0.0.1:8000/public/community-reply-kit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "category": "desktop_pc",
+    "community_channel": "community",
+    "buyer_question": "이 RTX 4070 SUPER 견적 오늘 결제해도 될까요?",
+    "product_title": "Creator RTX 4070 SUPER Build",
+    "seller_name": "PC Mall",
+    "candidate_summary": "RTX 4070 SUPER Ryzen 7 RAM 32GB SSD 1TB Windows 11 국내 AS 24개월 반품 14일 최종가 2165000원",
+    "budget_krw": 2200000,
+    "final_price_krw": 2165000,
+    "usage_context": "QHD 편집과 게임",
+    "risk_notes": ["팬 소음 후기가 일부 있음"],
+    "ready_evidence": ["최종 결제 금액", "옵션명", "국내 AS 24개월"],
+    "missing_evidence": ["배송 예정일"],
+    "source": "manual"
   }'
 ```
 
@@ -2296,6 +2319,7 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 - `/public/purchase-execution-kit`: 공개 최종가, 예산, blocker/warning, 누락 증거, 판매자 질문을 결제 전 실행 단계, 증거 게이트, 중단 조건, 채널별 공유 문구로 변환
 - `/public/final-decision-kit`: 공개 가격/체크아웃/호환성/리뷰/보증/증거 신호를 go/verify/hold 최종 판정, 결정 게이트, 구매 실행 prefill, 30초 검토 prefill로 변환
 - `/public/purchase-journey-kit`: 공개 질문, 상품명/장바구니 문구, 후기, 최종가를 구매 여정 단계, 실행 키트 순서, 필수 입력, 안전 규칙, 최종 판정 prefill로 변환
+- `/public/community-reply-kit`: 공개 커뮤니티/카톡/팀 구매 질문을 안전한 답글 카드, 증거 요청, 게시 규칙, 질문 라우팅/구매 여정 prefill로 변환
 - `/public/reviewer-quick-card-kit`: 공개 구매 후보를 공유받은 검토자의 30초 승인/증거 요청/반대 응답 카드, 리스크 체크, 답장 템플릿으로 변환
 - `/public/custom-candidate-decision-kit`: 공개 실제 후보 2~6개를 가격, 목적 적합도, 증거, 보증/반품, 재고, 위험 조건으로 랭킹하고 1순위/보류/제외 판단, 판매자 질문, 분석 prefill로 변환
 - `/public/checkout-lock-kit`: 공개 후보 비교에서 고른 1순위의 잠금가/사양/판매자/보증 기준을 최종 결제 화면과 대조해 locked/verify/blocked, 중단 조건, 캡처 체크리스트, 구매 실행 prefill로 변환

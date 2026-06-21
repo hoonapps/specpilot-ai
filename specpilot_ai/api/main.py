@@ -44,6 +44,7 @@ from specpilot_ai.core.models import (
     CheckoutReview,
     CheckoutReviewRequest,
     CheckStatus,
+    CommunityReplyKitRequest,
     CompletionDeliveryEngagement,
     CompletionDeliveryEngagementRequest,
     CompletionDeliveryProviderEvent,
@@ -122,6 +123,7 @@ from specpilot_ai.core.models import (
     PublicCategoryMarketReport,
     PublicCheckoutLockKit,
     PublicCheckoutNudgeKit,
+    PublicCommunityReplyKit,
     PublicConversionBoard,
     PublicCustomCandidateDecisionKit,
     PublicDealSanityKit,
@@ -253,6 +255,7 @@ from specpilot_ai.services.buyer_persona_quiz import (
 from specpilot_ai.services.buyer_trust import build_public_buyer_trust_kit
 from specpilot_ai.services.candidate_compare import build_public_candidate_compare
 from specpilot_ai.services.checkout_lock import build_public_checkout_lock_kit
+from specpilot_ai.services.community_reply import build_public_community_reply_kit
 from specpilot_ai.services.custom_candidate_decision import (
     build_public_custom_candidate_decision_kit,
 )
@@ -1585,6 +1588,16 @@ def public_purchase_journey_kit(
     request: PurchaseJourneyKitRequest,
 ) -> PublicPurchaseJourneyKit:
     return build_public_purchase_journey_kit(request)
+
+
+@app.post(
+    "/public/community-reply-kit",
+    response_model=PublicCommunityReplyKit,
+)
+def public_community_reply_kit(
+    request: CommunityReplyKitRequest,
+) -> PublicCommunityReplyKit:
+    return build_public_community_reply_kit(request)
 
 
 @app.post(
