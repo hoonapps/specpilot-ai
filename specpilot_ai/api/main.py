@@ -36,6 +36,7 @@ from specpilot_ai.core.models import (
     BuyerPersonaQuizResult,
     Category,
     CategoryMarketReport,
+    CheckoutLockRequest,
     CheckoutNudgeRequest,
     CheckoutReview,
     CheckoutReviewRequest,
@@ -107,6 +108,7 @@ from specpilot_ai.core.models import (
     PublicBuyerTrustKit,
     PublicCandidateCompare,
     PublicCategoryMarketReport,
+    PublicCheckoutLockKit,
     PublicCheckoutNudgeKit,
     PublicConversionBoard,
     PublicCustomCandidateDecisionKit,
@@ -217,6 +219,7 @@ from specpilot_ai.services.buyer_persona_quiz import (
 )
 from specpilot_ai.services.buyer_trust import build_public_buyer_trust_kit
 from specpilot_ai.services.candidate_compare import build_public_candidate_compare
+from specpilot_ai.services.checkout_lock import build_public_checkout_lock_kit
 from specpilot_ai.services.custom_candidate_decision import (
     build_public_custom_candidate_decision_kit,
 )
@@ -1413,6 +1416,16 @@ def public_checkout_nudge_kit(
     request: CheckoutNudgeRequest,
 ) -> PublicCheckoutNudgeKit:
     return build_checkout_nudge_kit(request)
+
+
+@app.post(
+    "/public/checkout-lock-kit",
+    response_model=PublicCheckoutLockKit,
+)
+def public_checkout_lock_kit(
+    request: CheckoutLockRequest,
+) -> PublicCheckoutLockKit:
+    return build_public_checkout_lock_kit(request)
 
 
 @app.post(

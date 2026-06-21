@@ -1693,6 +1693,114 @@ def test_public_checkout_nudge_kit_turns_cart_check_into_followup_plan() -> None
     assert "노트북" in ready_payload["analysis_prefill"]
 
 
+def test_public_checkout_lock_kit_compares_winner_to_final_checkout() -> None:
+    locked = client.post(
+        "/public/checkout-lock-kit",
+        json={
+            "category": "desktop_pc",
+            "budget_krw": 2_200_000,
+            "locked_candidate": {
+                "candidate_id": "candidate_a",
+                "title": "Creator RTX 4070 SUPER Build",
+                "seller_name": "PC Mall",
+                "locked_price_krw": 2_165_000,
+                "cpu": "Ryzen 7 7800X3D",
+                "gpu": "RTX 4070 SUPER",
+                "ram_gb": 32,
+                "storage_gb": 1000,
+                "os_name": "Windows 11",
+                "warranty_months": 24,
+                "return_window_days": 14,
+            },
+            "checkout_title": "Creator RTX 4070 SUPER Build",
+            "checkout_seller_name": "PC Mall",
+            "checkout_option_text": (
+                "Ryzen 7 7800X3D / RTX 4070 SUPER / RAM 32GB / "
+                "SSD 1TB / Windows 11"
+            ),
+            "checkout_total_krw": 2_150_000,
+            "checkout_quantity": 1,
+            "payment_method": "카드 결제",
+            "evidence_text": "재고 있음, 오늘 출고, AS 24개월, 반품 14일, 무료배송",
+            "source": "pytest",
+        },
+    )
+
+    assert locked.status_code == 200
+    payload = locked.json()
+    assert payload["kit_version"] == "specpilot.public_checkout_lock_kit.v1"
+    assert payload["category"] == "desktop_pc"
+    assert payload["candidate_id"] == "candidate_a"
+    assert payload["lock_status"] == "locked"
+    assert payload["lock_score"] >= 90
+    assert payload["price_delta_krw"] == -15_000
+    assert payload["mismatch_count"] == 0
+    assert payload["evidence_gap_count"] == 0
+    assert {check["check_id"] for check in payload["checks"]} >= {
+        "title",
+        "seller",
+        "quantity",
+        "price",
+        "cpu",
+        "gpu",
+        "ram",
+        "storage",
+        "os",
+        "warranty",
+        "return",
+        "delivery_stock",
+    }
+    assert all(check["status"] == "ok" for check in payload["checks"])
+    assert any("상품명" in field for field in payload["locked_fields"])
+    assert any("최종 결제 금액" in question for question in payload["seller_questions"])
+    assert any("최종 결제 금액" in item for item in payload["capture_checklist"])
+    assert payload["execution_prefill"]["verdict"] == "ready"
+    assert payload["execution_prefill"]["final_price_krw"] == 2_150_000
+    assert "잠금 검수" in payload["analysis_prefill"]
+    assert "SpecPilot AI 체크아웃 잠금 검수" in payload["share_copy"]
+    assert payload["primary_cta_path"] == "#analysis"
+    assert payload["next_actions"]
+
+    blocked = client.post(
+        "/public/checkout-lock-kit",
+        json={
+            "category": "laptop",
+            "budget_krw": 1_700_000,
+            "locked_candidate": {
+                "candidate_id": "laptop_a",
+                "title": "CreatorBook 14 Pro RTX 4060",
+                "seller_name": "Official Store",
+                "locked_price_krw": 1_620_000,
+                "cpu": "Core Ultra 7",
+                "gpu": "RTX 4060",
+                "ram_gb": 32,
+                "storage_gb": 1000,
+                "os_name": "Windows 11",
+                "warranty_months": 24,
+                "return_window_days": 7,
+            },
+            "checkout_title": "CreatorBook 14 RTX 4050",
+            "checkout_seller_name": "Open Market",
+            "checkout_option_text": "Core Ultra 5 / RTX 4050 / RAM 16GB / SSD 512GB / FreeDOS",
+            "checkout_total_krw": 1_860_000,
+            "checkout_quantity": 2,
+            "evidence_text": "해외 배송, 반품 불가",
+            "source": "pytest",
+        },
+    )
+
+    assert blocked.status_code == 200
+    blocked_payload = blocked.json()
+    assert blocked_payload["lock_status"] == "blocked"
+    assert blocked_payload["lock_score"] < 50
+    assert blocked_payload["price_delta_krw"] == 240_000
+    assert blocked_payload["mismatch_count"] >= 5
+    assert any(check["status"] == "blocker" for check in blocked_payload["checks"])
+    assert blocked_payload["execution_prefill"]["verdict"] == "hold"
+    assert blocked_payload["execution_prefill"]["blocker_count"] >= 1
+    assert any("결제하지" in action for action in blocked_payload["next_actions"])
+
+
 def test_public_buyer_trust_kit_summarizes_trust_center_for_launch() -> None:
     response = client.get("/public/buyer-trust-kit?limit=4")
 

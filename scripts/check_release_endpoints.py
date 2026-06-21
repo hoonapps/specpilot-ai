@@ -197,6 +197,23 @@ CHECKS = (
         ),
     ),
     SmokeCheck(
+        name="public-checkout-lock-kit",
+        method="POST",
+        path="/public/checkout-lock-kit",
+        required_keys=(
+            "kit_version",
+            "lock_status",
+            "lock_score",
+            "price_delta_krw",
+            "checks",
+            "locked_fields",
+            "seller_questions",
+            "capture_checklist",
+            "execution_prefill",
+            "share_copy",
+        ),
+    ),
+    SmokeCheck(
         name="public-purchase-aftercare-kit",
         method="POST",
         path="/public/purchase-aftercare-kit",
@@ -843,6 +860,35 @@ def run_smoke() -> list[dict[str, Any]]:
                         "risk_terms": ["해외", "리퍼", "반품 불가"],
                     },
                 ],
+                "source": "release_smoke",
+            }
+        if check.name == "public-checkout-lock-kit":
+            json_body = {
+                "category": "desktop_pc",
+                "budget_krw": 2_200_000,
+                "locked_candidate": {
+                    "candidate_id": "release_a",
+                    "title": "Creator RTX 4070 SUPER Build",
+                    "seller_name": "PC Mall",
+                    "locked_price_krw": 2_165_000,
+                    "cpu": "Ryzen 7 7800X3D",
+                    "gpu": "RTX 4070 SUPER",
+                    "ram_gb": 32,
+                    "storage_gb": 1000,
+                    "os_name": "Windows 11",
+                    "warranty_months": 24,
+                    "return_window_days": 14,
+                },
+                "checkout_title": "Creator RTX 4070 SUPER Build",
+                "checkout_seller_name": "PC Mall",
+                "checkout_option_text": (
+                    "Ryzen 7 7800X3D / RTX 4070 SUPER / RAM 32GB / "
+                    "SSD 1TB / Windows 11"
+                ),
+                "checkout_total_krw": 2_150_000,
+                "checkout_quantity": 1,
+                "payment_method": "카드 결제",
+                "evidence_text": "재고 있음, 오늘 출고, AS 24개월, 반품 14일, 무료배송",
                 "source": "release_smoke",
             }
         if check.name == "public-purchase-aftercare-kit":

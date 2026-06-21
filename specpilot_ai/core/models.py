@@ -2404,6 +2404,72 @@ class PublicCheckoutNudgeKit(BaseModel):
     primary_cta_path: str = "#analysis"
 
 
+class CheckoutLockReference(BaseModel):
+    candidate_id: str = ""
+    title: str = Field(min_length=2)
+    seller_name: str = ""
+    locked_price_krw: int = Field(ge=0, le=200_000_000)
+    cpu: str = ""
+    gpu: str = ""
+    ram_gb: int | None = Field(default=None, ge=0, le=1024)
+    storage_gb: int | None = Field(default=None, ge=0, le=16384)
+    os_name: str = ""
+    warranty_months: int | None = Field(default=None, ge=0, le=120)
+    return_window_days: int | None = Field(default=None, ge=0, le=365)
+    evidence_locked: list[str] = Field(default_factory=list)
+
+
+class CheckoutLockRequest(BaseModel):
+    category: Category = Category.desktop_pc
+    budget_krw: int = Field(default=2_200_000, ge=300_000, le=30_000_000)
+    locked_candidate: CheckoutLockReference
+    checkout_title: str = ""
+    checkout_seller_name: str = ""
+    checkout_option_text: str = ""
+    checkout_total_krw: int | None = Field(default=None, ge=0, le=200_000_000)
+    checkout_quantity: int = Field(default=1, ge=1, le=50)
+    shipping_fee_krw: int = Field(default=0, ge=0, le=5_000_000)
+    coupon_discount_krw: int = Field(default=0, ge=0, le=50_000_000)
+    payment_method: str = "카드 결제"
+    evidence_text: str = ""
+    source: str = "web"
+
+
+class CheckoutLockCheck(BaseModel):
+    check_id: str
+    label: str
+    status: CheckStatus
+    locked: str
+    observed: str
+    recommendation: str
+
+
+class PublicCheckoutLockKit(BaseModel):
+    kit_version: str = "specpilot.public_checkout_lock_kit.v1"
+    generated_at: str
+    category: Category
+    product_title: str
+    candidate_id: str
+    lock_status: str
+    lock_score: int = Field(ge=0, le=100)
+    price_delta_krw: int | None = None
+    mismatch_count: int = 0
+    evidence_gap_count: int = 0
+    headline: str
+    summary: str
+    checks: list[CheckoutLockCheck] = Field(default_factory=list)
+    locked_fields: list[str] = Field(default_factory=list)
+    seller_questions: list[str] = Field(default_factory=list)
+    capture_checklist: list[str] = Field(default_factory=list)
+    stop_conditions: list[str] = Field(default_factory=list)
+    execution_prefill: PurchaseExecutionKitRequest
+    analysis_prefill: str
+    share_copy: str
+    primary_cta_label: str = "잠금 조건으로 분석 시작"
+    primary_cta_path: str = "#analysis"
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class SpecRescueRequest(BaseModel):
     category: Category = Category.desktop_pc
     product_title: str = "구매 후보"
