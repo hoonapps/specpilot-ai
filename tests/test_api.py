@@ -1115,6 +1115,62 @@ def test_public_requirements_consensus_kit_turns_stakeholders_into_analysis_requ
     assert any("blocker" in action for action in blocker_payload["next_actions"])
 
 
+def test_public_build_blueprint_kit_splits_budget_into_searchable_parts() -> None:
+    response = client.post(
+        "/public/build-blueprint-kit",
+        json={
+            "category": "desktop_pc",
+            "budget_krw": 2_200_000,
+            "purpose": "QHD 게임과 영상 편집",
+            "priority_mode": "balanced",
+            "must_haves": ["RTX 4070급 GPU", "RAM 32GB", "국내 AS"],
+            "exclusions": ["해외 리퍼", "반품 불가"],
+            "monitor_resolution": "QHD",
+            "purchase_timing": "within_14_days",
+            "source": "pytest",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["kit_version"] == "specpilot.public_build_blueprint_kit.v1"
+    assert payload["category"] == "desktop_pc"
+    assert payload["budget_krw"] == 2_200_000
+    assert payload["blueprint_status"] in {"ok", "warning"}
+    assert payload["blueprint_score"] >= 60
+    assert payload["component_budget_total_krw"] <= 2_200_000
+    component_ids = {component["component_id"] for component in payload["components"]}
+    assert {"gpu", "cpu", "memory", "storage", "power_case"} <= component_ids
+    assert any("RTX" in component["target_spec"] for component in payload["components"])
+    assert any(query["channel"] == "price_compare" for query in payload["search_queries"])
+    assert any("해외 리퍼" in condition for condition in payload["avoid_conditions"])
+    assert "그래픽카드" in payload["cart_text_template"]
+    assert payload["setup_prefill"]["category"] == "desktop_pc"
+    assert payload["setup_prefill"]["ram_gb"] == 32
+    assert "구매 설계도" in payload["analysis_prefill"]
+    assert "SpecPilot AI 구매 설계도" in payload["share_copy"]
+    assert payload["next_actions"]
+
+    blocker = client.post(
+        "/public/build-blueprint-kit",
+        json={
+            "category": "laptop",
+            "budget_krw": 650_000,
+            "purpose": "QHD 게임과 영상 편집",
+            "priority_mode": "performance",
+            "must_haves": ["RTX GPU", "RAM 32GB"],
+            "monitor_resolution": "QHD",
+            "portability": "light",
+        },
+    )
+    assert blocker.status_code == 200
+    blocker_payload = blocker.json()
+    assert blocker_payload["blueprint_status"] == "blocker"
+    assert blocker_payload["blueprint_score"] < payload["blueprint_score"]
+    assert blocker_payload["setup_prefill"]["category"] == "laptop"
+    assert any("예산" in action for action in blocker_payload["next_actions"])
+
+
 def test_public_seller_evidence_kit_builds_questions_and_scores_answer() -> None:
     request_payload = {
         "category": "desktop_pc",

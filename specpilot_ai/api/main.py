@@ -32,6 +32,7 @@ from specpilot_ai.core.models import (
     BetaLead,
     BetaLeadRequest,
     BetaReadinessDashboard,
+    BuildBlueprintRequest,
     BuyerPersonaQuizRequest,
     BuyerPersonaQuizResult,
     Category,
@@ -103,6 +104,7 @@ from specpilot_ai.core.models import (
     ProductBrief,
     ProductPageEvidenceRequest,
     PublicAcquisitionHub,
+    PublicBuildBlueprintKit,
     PublicBuyerChallengeKit,
     PublicBuyerChecklist,
     PublicBuyerPersonaQuiz,
@@ -215,6 +217,7 @@ from specpilot_ai.core.models import (
 )
 from specpilot_ai.graph.neo4j_client import Neo4jRepository
 from specpilot_ai.graph.product_graph import pc_purchase_graph_schema
+from specpilot_ai.services.build_blueprint import build_public_build_blueprint_kit
 from specpilot_ai.services.buyer_challenge import build_public_buyer_challenge_kit
 from specpilot_ai.services.buyer_checklist import build_public_buyer_checklist
 from specpilot_ai.services.buyer_persona_quiz import (
@@ -1334,6 +1337,16 @@ def public_requirements_consensus_kit(
     request: RequirementsConsensusRequest,
 ) -> PublicRequirementsConsensusKit:
     return build_public_requirements_consensus_kit(request)
+
+
+@app.post(
+    "/public/build-blueprint-kit",
+    response_model=PublicBuildBlueprintKit,
+)
+def public_build_blueprint_kit(
+    request: BuildBlueprintRequest,
+) -> PublicBuildBlueprintKit:
+    return build_public_build_blueprint_kit(request)
 
 
 @app.post(

@@ -57,6 +57,7 @@ SpecPilot AI는 최저가 링크만 보여주는 쇼핑 도구가 아닙니다. 
 - 공개 구매 실패 비용 계산기: 예산, 수량, 긴급도, 위험 유형을 받아 잘못 산 컴퓨터의 숨은 손실, 방지 플랜, 분석 prefill을 금액으로 제시
 - 공개 구매 챌린지 공유 키트: 성향 진단, 실패 비용 계산, 체크리스트를 채널별 공유 문구와 3단계 챌린지로 묶어 리포트 생성 전 확산 루프를 제공
 - 공개 구매 조건 합의 키트: 가족/팀/커뮤니티 이해관계자의 예산, 용도, 필수 조건, 제외 조건을 합의 점수와 분석 요청 prefill로 정규화
+- 공개 구매 설계도 키트: 예산과 용도를 부품/스펙 예산 배분, 가격비교 검색어, 피해야 할 조건, 세팅 호환성 prefill로 변환
 - 공개 세팅 호환성 키트: CPU/GPU/RAM/SSD/모니터/파워/폼팩터 조합을 목적 기준으로 점검하고 병목·전력·과투자 리스크를 검수 prefill로 연결
 - 공개 업그레이드 수명 검수 키트: RAM/SSD 슬롯, 플랫폼, 파워, 케이스, 노트북 온보드 조건을 목표 보유 기간과 연결해 장기 사용 여지를 점수화
 - 공개 총소유비용/재판매 가치 키트: 구매가, 보유 기간, 유지비, 업그레이드비, 다운타임, 재판매율을 월 실질 비용과 감가 리스크로 변환
@@ -527,6 +528,23 @@ curl -X POST http://127.0.0.1:8000/public/requirements-consensus-kit \
         "risk_tolerance": "low"
       }
     ]
+  }'
+```
+
+공개 구매 설계도 키트는 합의된 예산과 용도를 부품/스펙별 목표, 예산 범위, 가격비교 검색어, 피해야 할 판매 조건, 세팅 호환성 prefill로 바꿉니다.
+
+```bash
+curl -X POST http://127.0.0.1:8000/public/build-blueprint-kit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "category": "desktop_pc",
+    "budget_krw": 2200000,
+    "purpose": "QHD 게임과 영상 편집",
+    "priority_mode": "balanced",
+    "must_haves": ["RTX 4070급 GPU", "RAM 32GB", "국내 AS"],
+    "exclusions": ["해외 리퍼", "반품 불가"],
+    "monitor_resolution": "QHD",
+    "purchase_timing": "within_14_days"
   }'
 ```
 
@@ -1954,6 +1972,7 @@ LangGraph 노드는 다음 순서로 실행됩니다.
 - `/public/mistake-cost-calculator`, `/public/mistake-cost-calculator/result`: 공개 구매 실패 비용 계산 질문과 예산/수량/긴급도별 예상 손실, 방지 플랜, 분석 prefill, 공유 문구 조회
 - `/public/buyer-challenge-kit`: 구매 성향, 실패 비용, 체크리스트를 3단계 공유 챌린지와 카카오톡/커뮤니티/팀 채널별 복사 문구로 패키징
 - `/public/requirements-consensus-kit`: 가족/팀/커뮤니티 이해관계자의 예산, 용도, 필수 조건, 제외 조건을 합의 점수, 충돌, 분석 요청 prefill, 채널별 복사 문구로 변환
+- `/public/build-blueprint-kit`: 합의된 예산과 용도를 부품/스펙 목표, 예산 배분, 가격비교 검색어, 피해야 할 조건, 세팅 호환성 prefill로 변환
 - `/public/product-page-evidence-kit`: 공개 상품 URL과 사용자가 붙여 넣은 페이지 문구/HTML에서 가격, 배송비, 할인, 실구매가, 재고, 모델명 일치도, URL 안전성, 판매자 질문, 검수 prefill을 생성
 - `/public/setup-compatibility-kit`: 공개 CPU/GPU/RAM/SSD/모니터/파워/폼팩터 또는 노트북 휴대성 조합을 목적 기준으로 점검하고 분석/검수 prefill 조회
 - `/public/upgrade-readiness-kit`: 공개 RAM/SSD 슬롯, CPU 플랫폼, 파워, 케이스, 노트북 온보드 제약을 목표 보유 기간 기준 세팅 수명 점수, 업그레이드 경로, 판매자 질문으로 변환

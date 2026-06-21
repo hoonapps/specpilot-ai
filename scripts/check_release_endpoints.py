@@ -166,6 +166,25 @@ CHECKS = (
         ),
     ),
     SmokeCheck(
+        name="public-build-blueprint-kit",
+        method="POST",
+        path="/public/build-blueprint-kit",
+        required_keys=(
+            "kit_version",
+            "blueprint_status",
+            "blueprint_score",
+            "target_profile",
+            "components",
+            "search_queries",
+            "compatibility_rules",
+            "avoid_conditions",
+            "cart_text_template",
+            "setup_prefill",
+            "analysis_prefill",
+            "share_copy",
+        ),
+    ),
+    SmokeCheck(
         name="public-seller-evidence-kit",
         method="POST",
         path="/public/seller-evidence-kit",
@@ -847,6 +866,18 @@ def run_smoke() -> list[dict[str, Any]]:
                         "risk_tolerance": "medium",
                     },
                 ],
+                "source": "release_smoke",
+            }
+        if check.name == "public-build-blueprint-kit":
+            json_body = {
+                "category": "desktop_pc",
+                "budget_krw": 2_200_000,
+                "purpose": "QHD 게임과 영상 편집",
+                "priority_mode": "balanced",
+                "must_haves": ["RTX 4070급 GPU", "RAM 32GB", "국내 AS"],
+                "exclusions": ["해외 리퍼", "반품 불가"],
+                "monitor_resolution": "QHD",
+                "purchase_timing": "within_14_days",
                 "source": "release_smoke",
             }
         if check.name == "public-seller-evidence-kit":

@@ -1910,6 +1910,64 @@ class PublicRequirementsConsensusKit(BaseModel):
     next_actions: list[str] = Field(default_factory=list)
 
 
+class BuildBlueprintRequest(BaseModel):
+    category: Category = Category.desktop_pc
+    budget_krw: int = Field(default=2_200_000, ge=300_000, le=30_000_000)
+    purpose: str = "QHD 게임과 영상 편집"
+    priority_mode: str = "balanced"
+    must_haves: list[str] = Field(default_factory=list)
+    exclusions: list[str] = Field(default_factory=list)
+    owned_parts: list[str] = Field(default_factory=list)
+    monitor_resolution: str = "QHD"
+    portability: str = "balanced"
+    purchase_timing: str = "within_30_days"
+    source: str = "web"
+
+
+class BuildBlueprintComponent(BaseModel):
+    component_id: str
+    label: str
+    target_spec: str
+    budget_min_krw: int = Field(ge=0)
+    budget_max_krw: int = Field(ge=0)
+    priority: CheckStatus
+    why_it_matters: str
+    search_terms: list[str] = Field(default_factory=list)
+    avoid_terms: list[str] = Field(default_factory=list)
+
+
+class BuildBlueprintSearchQuery(BaseModel):
+    channel: str
+    query: str
+    intent: str
+    must_include: list[str] = Field(default_factory=list)
+    must_exclude: list[str] = Field(default_factory=list)
+
+
+class PublicBuildBlueprintKit(BaseModel):
+    kit_version: str = "specpilot.public_build_blueprint_kit.v1"
+    generated_at: str
+    category: Category
+    blueprint_status: CheckStatus
+    blueprint_score: int = Field(ge=0, le=100)
+    headline: str
+    summary: str
+    budget_krw: int
+    target_profile: str
+    component_budget_total_krw: int
+    components: list[BuildBlueprintComponent] = Field(default_factory=list)
+    search_queries: list[BuildBlueprintSearchQuery] = Field(default_factory=list)
+    compatibility_rules: list[str] = Field(default_factory=list)
+    avoid_conditions: list[str] = Field(default_factory=list)
+    cart_text_template: str
+    setup_prefill: "SetupCompatibilityRequest"
+    analysis_prefill: str
+    share_copy: str
+    primary_cta_label: str = "설계도 조건으로 분석 시작"
+    primary_cta_path: str = "#analysis"
+    next_actions: list[str] = Field(default_factory=list)
+
+
 class SellerEvidenceRequest(BaseModel):
     category: Category = Category.desktop_pc
     product_title: str = "구매 후보"
